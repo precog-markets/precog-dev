@@ -1,54 +1,41 @@
 {
   "repo_notes": [
     {
-      "content": ""
+      "content": "",
+      "author": null
     }
   ],
   "pages": [
     {
       "title": "Overview",
       "purpose": "Introduce the Precog prediction market system, its core components, and high-level architecture",
+      "parent": null,
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
     {
       "title": "Smart Contract System",
       "purpose": "Explain the smart contract architecture and how the contracts interact with each other",
+      "parent": null,
       "page_notes": [
         {
-          "content": ""
-        }
-      ]
-    },
-    {
-      "title": "PrecogMarketV7",
-      "purpose": "Detail the individual market contract, its LMSR pricing mechanism, and market lifecycle",
-      "parent": "Smart Contract System",
-      "page_notes": [
-        {
-          "content": ""
-        }
-      ]
-    },
-    {
-      "title": "PrecogMasterV7",
-      "purpose": "Explain the master contract that manages market creation and interaction",
-      "parent": "Smart Contract System",
-      "page_notes": [
-        {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
     {
       "title": "Frontend Application",
       "purpose": "Overview of the Next.js frontend application structure and key components",
+      "parent": null,
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -58,7 +45,8 @@
       "parent": "Frontend Application",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -68,7 +56,8 @@
       "parent": "Frontend Application",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -78,7 +67,8 @@
       "parent": "Frontend Application",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -88,16 +78,19 @@
       "parent": "Frontend Application",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
     {
       "title": "Development and Deployment",
       "purpose": "Explain the development workflow, testing, and deployment process",
+      "parent": null,
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -107,7 +100,8 @@
       "parent": "Development and Deployment",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -117,7 +111,8 @@
       "parent": "Development and Deployment",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -127,16 +122,19 @@
       "parent": "Development and Deployment",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
     {
       "title": "User Guides",
       "purpose": "Practical guides for using the Precog system",
+      "parent": null,
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -146,7 +144,8 @@
       "parent": "User Guides",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -156,7 +155,8 @@
       "parent": "User Guides",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     },
@@ -166,7 +166,8 @@
       "parent": "User Guides",
       "page_notes": [
         {
-          "content": ""
+          "content": "",
+          "author": null
         }
       ]
     }
