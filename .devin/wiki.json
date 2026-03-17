@@ -1,0 +1,109 @@
+{
+  "repo_notes": [
+    {
+      "content": "This wiki documents the Precog prediction market protocol for blockchain developers and frontend developers. It is organized around two core pillars:\n\n1. **Smart Contract System (V8):** The architecture, design, and features of PrecogMasterV8 and PrecogMarketV8. Previous versions (V7 and earlier) exist but are not the focus — mention them only briefly for historical context when directly relevant.\n\n2. **Precog Dev (Frontend Client):** A barebones developer-facing frontend built on Scaffold-ETH-2 (Next.js, RainbowKit, Hardhat, Wagmi, Viem). Its purpose is to serve as a reference client and testing interface for interacting with the smart contracts.\n\nThe README should be prominently referenced in the Overview page. Key facts to carry throughout the wiki:\n\n**Live Deployments (Base Mainnet):**\n- PrecogMaster: 0x00000000000c109080dfa976923384b97165a57a (https://basescan.org/address/0x00000000000c109080dfa976923384b97165a57a)\n- PrecogMarket (recipe): 0x44769bE6853918e939281b2f669f9a58608Cb55B\n- PrecogRealityOracle: 0xd7bE03206daFa4552ab58CD3CFC191426404C77D\n- App: https://core.precog.markets/\n\n**Testnet Deployments (Base Sepolia):**\n- PrecogMasterV8: 0x61ec71F1Fd37ecc20d695E83F3D68e82bEfe8443 (https://sepolia.basescan.org/address/0x61ec71F1Fd37ecc20d695E83F3D68e82bEfe8443)\n- PrecogMarketV8: 0xfB4CD4779980896893B1855ad5A89E3ACCA7fc87\n- PrecogRealityOracleV2: 0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37\n- Staging app: https://staging-core.precog.markets/\n- Dev client: https://dev.precog.markets/\n\n**Repo structure:**\n- packages/hardhat/contracts — contract implementations\n- packages/hardhat/test — test implementations\n- packages/hardhat/scripts — deploy and helpers\n\nThe pricing mechanism is LS-LMSR (Liquidity-Sensitive LMSR). Reference the LS-LMSR.md document and the interactive simulator (https://core.precog.markets/simulator) where relevant.",
+      "author": null
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce the Precog prediction market protocol and this repository",
+      "parent": null,
+      "page_notes": [
+        {
+          "content": "Lead with the README content as the canonical introduction. Precog is a decentralized prediction market protocol using LS-LMSR pricing, deployed on Base. This repo (precog-dev) contains both the V8 smart contracts and Precog Dev, the barebones developer frontend.\n\nHighlight the two main components upfront:\n1. Smart contracts: PrecogMasterV8 and PrecogMarketV8\n2. Frontend: Precog Dev (dev.precog.markets) — a reference client for testing and interacting with the contracts\n\nInclude the full deployment addresses table for both mainnet (Base) and testnet (Base Sepolia) as shown in the README. Link to Basescan for each address. This is critical reference information for developers integrating with the protocol.\n\nMention the Scaffold-ETH-2 foundation (NextJS, RainbowKit, Hardhat, Wagmi, Viem) and the BUSL-1.1 / MIT dual license.\n\nDo NOT go deep into architecture here — that belongs in child pages. Don't include diagram of different files interacting with each other.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "Smart Contract System",
+      "purpose": "Explain the V8 smart contract architecture and how the contracts interact with each other",
+      "parent": null,
+      "page_notes": [
+        {
+          "content": "Focus entirely on V8. The contract system consists of two main contracts — PrecogMasterV8 and PrecogMarketV8 — plus PrecogRealityOracleV2 for resolution. Explain the architectural pattern: PrecogMasterV8 is the factory and registry, PrecogMarketV8 is the 'recipe' contract cloned for each individual market.\n\nExplain how the three contracts relate to each other at a high level before going into per-contract detail on child pages.\n\nNote the use of the clone/proxy pattern (PrecogMarket as a 'recipe' for all markets) as this is architecturally significant — it's referenced explicitly in the README.\n\nMention V7 and earlier versions exist (mainnet is currently on V7) but make clear that V8 is the current development version and the focus of this documentation. A version comparison is not needed. One can interact with PrecogMarketV8 directly if needed.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "PrecogMarketV8",
+      "purpose": "Detail the individual market contract, its LS-LMSR pricing mechanism, and market lifecycle",
+      "parent": "Smart Contract System",
+      "page_notes": [
+        {
+          "content": "This is the core market contract. Cover:\n- What a single PrecogMarket instance represents (one prediction market with N outcomes)\n- The LS-LMSR (Liquidity-Sensitive LMSR) pricing mechanism — reference LS-LMSR.md and the max loss proof PDF. Explain intuitively what LS-LMSR does differently from standard LMSR.\n- Market lifecycle: creation → active trading → resolution → redemption\n- Key functions: buying shares, selling shares, resolving, redeeming winnings\n- The clone/proxy pattern: PrecogMarketV8 is deployed once as a 'recipe' and cloned per market by PrecogMasterV8\n- Fees, if present in the contract\n- Key state variables and events\n\nTestnet address: 0xfB4CD4779980896893B1855ad5A89E3ACCA7fc87 (Base Sepolia)\nMainnet recipe address: 0x44769bE6853918e939281b2f669f9a58608Cb55B (Base)\n\nDo not compare to V7 in detail.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "PrecogMasterV8",
+      "purpose": "Explain the master factory contract that manages market creation and the protocol registry",
+      "parent": "Smart Contract System",
+      "page_notes": [
+        {
+          "content": "PrecogMasterV8 is the factory and registry contract for the protocol. Cover:\n- Its role as market factory: deploying new PrecogMarketV8 clones\n- Registry functionality: tracking all deployed markets\n- Market creation parameters: what inputs are required to create a market (question, outcomes, resolution source, liquidity, etc.)\n- Access control and admin functions\n- Integration with PrecogRealityOracleV2 for resolution\n- Key functions and events\n- The vanity address: 0x61ec71F1Fd37ecc20d695E83F3D68e82bEfe8443 (Base Sepolia) / 0x00000000000c109080dfa976923384b97165a57a (Base mainnet — note the leading zeros, which suggest a vanity/CREATE2 deployment)\n\nDo not compare to V7 in detail.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "PrecogRealityOracleV2",
+      "purpose": "Explain the oracle contract used for market resolution, its supported oracle backends, and the Reality + Kleros dispute flow",
+      "parent": "Smart Contract System",
+      "page_notes": [
+        {
+          "content": "Document the oracle contract responsible for resolving markets. Cover:\n\n**Oracle abstraction:**\nPrecogRealityOracleV2 is designed to be oracle-agnostic. While Reality.eth is the primary supported oracle, the contract architecture allows other oracle backends to be used for resolution. Document this extensibility clearly — it is an important design property for developers building on or integrating with the protocol.\n\n**Reality.eth integration:**\nWhen using Reality.eth as the oracle backend, questions are posted on-chain and answered by the crowd via an escalation-game mechanism. Cover how the oracle contract posts questions to Reality.eth and reads back the finalized answer to resolve the market.\n\n**Kleros as the dispute failsafe:**\nIf a Reality.eth answer is appealed, the dispute escalates to Kleros — a decentralized court system. Kleros serves as the ultimate arbitration layer: a panel of jurors reviews the disputed question and renders a binding decision that overrides the Reality.eth answer. Document this two-layer system clearly (Reality.eth for standard resolution, Kleros court for contested cases) as it is a key trust and security property of the protocol.\n\n**Resolution flow end-to-end:**\n- Market expires → question posted to oracle\n- Reality.eth crowd sources an answer\n- If unchallenged: answer finalizes, oracle resolves the market\n- If challenged/appealed: escalates to Kleros court → Kleros ruling finalizes the resolution\n\n**Addresses:**\n- Base Sepolia: 0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37\n- Base mainnet: 0xd7bE03206daFa4552ab58CD3CFC191426404C77D",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "Frontend Application",
+      "purpose": "Overview of Precog Dev — the barebones developer frontend, its purpose, and how to run it locally",
+      "parent": null,
+      "page_notes": [
+        {
+          "content": "Precog Dev (https://dev.precog.markets/) is a minimal, developer-facing frontend client for the Precog protocol. Its purpose is NOT to be the production app (that's https://core.precog.markets/) — it is a reference client and development/testing interface for interacting directly with the smart contracts.\n\n**Scaffold-ETH-2 foundation:**\nThe codebase is built on top of Scaffold-ETH-2, an open-source toolkit for building dApps on Ethereum. This is important context for any developer contributing to or extending the frontend — familiarity with Scaffold-ETH-2 patterns is assumed. The full Scaffold-ETH-2 docs are at https://docs.scaffoldeth.io. The stack is: Next.js, RainbowKit, Hardhat, Wagmi, Viem.\n\n**Repo structure:**\nThis is a monorepo. The frontend lives under packages/nextjs (or equivalent), contracts under packages/hardhat.\n\n**Development workflow — include all utility commands from the README:**\n- `yarn install` — install all dependencies (Node >= v18.17 required)\n- `yarn chain` — start a local Hardhat chain with configured accounts (for initial deploy testing)\n- `yarn fork` — start a local Hardhat fork chain (recommended before deploying to live networks)\n- `yarn deploy` — run deploy scripts (always test on a fork first)\n- `yarn start` — run the GUI/frontend server locally\n- `yarn test` — run all contract tests\n- `yarn test-details` — verbose test output, useful when developing new features\n- `yarn test-gas` — run tests with gas profiler to check/optimize gas costs\n- `yarn lint` — run Hardhat and Next.js linters\n\n**Testing environments:**\n1. Local — Hardhat chain (`yarn chain`) or fork (`yarn fork`)\n2. Testnet — Base Sepolia (V8 contracts live here, use for all new development)\n3. Mainnet — Base (V7 currently deployed here)\n\nDeploy scripts are at packages/hardhat/scripts.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "Market Pages and Components",
+      "purpose": "Document the main market-related pages and UI components in Precog Dev",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": "Document the key pages and components in the frontend. Focus on how each page maps to a contract interaction:\n- Market listing/browse page → reads from PrecogMasterV8 registry\n- Individual market page → reads from PrecogMarketV8 (prices, shares, status)\n- Trading UI → calls buy/sell functions on PrecogMarketV8\n- Resolution/redemption UI → calls resolve and redeem functions\n\nFor each component, note which contract functions it calls and what data it displays. This is primarily useful for developers extending or integrating the frontend.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "Market Creation Interface",
+      "purpose": "Explain how the market creation UI works and what contract calls it makes",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": "Detail the market creation flow in the frontend:\n- The form fields and how they map to PrecogMasterV8 createMarket parameters\n- Required inputs: question text, outcome options, resolution oracle/source, liquidity parameters, expiry\n- The transaction flow: approval (if token-based), then the createMarket call\n- How the newly deployed PrecogMarketV8 clone address is returned and surfaced in the UI\n\nThis page is especially useful for developers who want to understand the contract ABI surface through the lens of a working UI implementation.",
+          "author": null
+        }
+      ]
+    },
+    {
+      "title": "Testing Framework",
+      "purpose": "Detail the testing approach for the V8 contracts",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": "Document the test structure under packages/hardhat/test. Cover:\n- What the tests cover (contract functions, edge cases, requirements)\n- How to interpret `yarn test` vs `yarn test-details` output\n- Gas testing with `yarn test-gas` and why gas optimization matters for prediction market contracts (many users, frequent trades)\n- Any notable test patterns or fixtures used",
+          "author": null
+        }
+      ]
+    }
+  ]
+}
