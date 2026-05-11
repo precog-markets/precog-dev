@@ -20,14 +20,14 @@ This repository contains all smart contracts for the Precog forecasting protocol
 ## Mainnet Latest Deployments (Base)
 - **PrecogMaster**: [0x00000000000c109080dfa976923384b97165a57a](https://basescan.org/address/0x00000000000c109080dfa976923384b97165a57a)
 - **PrecogMarket**: [0x44769bE6853918e939281b2f669f9a58608Cb55B](https://basescan.org/address/0x44769bE6853918e939281b2f669f9a58608Cb55B) (Recipe for all markets)
-- **PrecogRealityOracle**: [0xd7bE03206daFa4552ab58CD3CFC191426404C77D](https://basescan.org/address/0xd7bE03206daFa4552ab58CD3CFC191426404C77D) 
+- **PrecogRealityOracleV3**: [0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073](https://basescan.org/address/0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073) 
 > Precog app site: [**Precog Core**](https://core.precog.markets/)
 <hr/>
 
 ## Testnet Latest Deployments (Base Sepolia)
 - **PrecogMasterV8**: [0x61ec71F1Fd37ecc20d695E83F3D68e82bEfe8443](https://sepolia.basescan.org/address/0x61ec71F1Fd37ecc20d695E83F3D68e82bEfe8443)
 - **PrecogMarketV8**: [0xfB4CD4779980896893B1855ad5A89E3ACCA7fc87](https://sepolia.basescan.org/address/0xfB4CD4779980896893B1855ad5A89E3ACCA7fc87) (Recipe for all markets)
-- **PrecogRealityOracleV2**: [0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37](https://sepolia.basescan.org/address/0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37)
+- **PrecogRealityOracleV3**: [0xcA96BBDC3e45614c6F49CcF8cb913C0965Dca2E5](https://sepolia.basescan.org/address/0xcA96BBDC3e45614c6F49CcF8cb913C0965Dca2E5)
 > Precog app site: [**Precog Core Staging**](https://staging-core.precog.markets/) 
 <hr/>
 
