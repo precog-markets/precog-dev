@@ -40,12 +40,11 @@ This small shift in how to set b---from a constant to an increasing value---crea
 
    In the LMSR this loss bound determines the maximum amount of liquidity in the market (`maxLoss = b . log(n)`). 
    
-   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market (`maxLoss = initialShares . overround`). The maximum amount of liquidity when using the LS-LMSR is unbounded, because market participants are contributing to liquidity, too.
-
+   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market and the overround parameter (`maxLoss = initialShares . overround`). This max bound is properly explained the next document: [Maximum Loss Bound for the Liquidity-Sensitive Logarithmic Market Scoring Rule](./LS-LMSR_MaxLoss_Proof.pdf)
 
 4. Liquidity Sensitivity:
 
-   Observe that as the market has more activity and q increases, b increases, so market depth increases in market volume, a property that is seen in real-world markets (e.g., you can buy a million dollars of apple stock without moving the price significantly, but buying a million dollars of a low market cap stock like FDP will change its price significantly).
+   Observe that as the market has more activity and q increases, b increases, so market depth increases in market volume, a property that is seen in real-world markets (e.g., you can buy a million dollars of Apple stock without moving the price significantly, but buying a million dollars of a low market cap stock will change its price significantly).
 
 
 5. Prices Sum to (at Least) 1:
