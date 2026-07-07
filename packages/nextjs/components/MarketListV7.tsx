@@ -1,16 +1,16 @@
 import { useState } from "react";
-import Link from "next/link";
 import { formatUnits } from "viem";
 import { useAccount } from "wagmi";
 import { Pie, PieChart, Sector } from "recharts";
 import { PieSectorDataItem } from "recharts/types/polar/Pie";
-import { ArrowTopRightOnSquareIcon, ChartBarSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
 import { MarketInfo, useAccountOutcomeBalances, usePrecogMarketDetails, usePrecogMarketPrices } from "~~/hooks/usePrecogMarketData";
 import { useMarketBuyCalculations, useMarketSellCalculations } from "~~/hooks/useMarketCalculations";
 import { useMarketActions } from "~~/hooks/useMarketActions";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth/networks";
 import { ChainWithAttributes } from "~~/utils/scaffold-eth/networks";
+import { formatCategoryCsv } from "~~/utils/marketCategories";
 import { fromInt128toNumber } from "~~/utils/numbers";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "./Charts";
 
@@ -37,7 +37,8 @@ export const MarketListV7 = ({
   }
 
   const filteredMarkets = markets.filter(market => {
-    const nameMatches = market.name.toLowerCase().includes(searchFilter.toLowerCase());
+    const text = `${market.name} ${market.category} ${market.outcomes.join(" ")}`.toLowerCase();
+    const nameMatches = text.includes(searchFilter.toLowerCase());
     const status = getMarketStatus(market.startTimestamp, market.endTimestamp).status.toLowerCase();
     const statusMatches = statusFilter === "all" || status === statusFilter;
     return nameMatches && statusMatches;
@@ -104,7 +105,7 @@ const MarketItem = ({ market, targetNetwork }: { market: MarketInfo; targetNetwo
               </div>
               <div>
                 <span className="font-bold text-base-content/70">Category: </span>
-                {market.category}
+                {formatCategoryCsv(market.category) || "N/A"}
               </div>
               <div className="break-words">
                 <span className="font-bold text-base-content/70">Outcomes: </span>
@@ -133,14 +134,6 @@ const MarketItem = ({ market, targetNetwork }: { market: MarketInfo; targetNetwo
                   {market.market}
                   <ArrowTopRightOnSquareIcon className="w-3 h-3 flex-shrink-0" />
                 </a>
-                <Link
-                  href={`/market?address=${market.market}`}
-                  className="ml-4 inline-flex items-center gap-1 hover:underline"
-                  passHref
-                >
-                  Market Details
-                  <ChartBarSquareIcon className="w-4 h-4 flex-shrink-0" />
-                </Link>
               </div>
             </div>
           </div>
@@ -305,7 +298,7 @@ const MarketDetailedInfo = ({ market }: { market: MarketInfo }) => {
             <span className="font-bold text-base-content/70">Total Shares:</span>{" "}
             {formatMarketValue(marketInfo[0], fromInt128toNumber)}
           </p>
-          <p className="m-0">
+          <div className="m-0">
             <div className="flex items-center gap-4">
               <span className="font-bold text-base-content/70">Shares Balances:</span>{" "}
               {formatSharesBalances(marketInfo[1], market.outcomes)}
@@ -314,7 +307,7 @@ const MarketDetailedInfo = ({ market }: { market: MarketInfo }) => {
               sharesArray={marketInfo[1]}
               outcomes={market.outcomes}
             />
-          </p>
+          </div>
         </div>
       </div>
     </div>

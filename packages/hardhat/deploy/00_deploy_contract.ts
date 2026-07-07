@@ -1,5 +1,10 @@
 import {HardhatRuntimeEnvironment} from "hardhat/types";
 import {DeployFunction} from "hardhat-deploy/types";
+// import {MateToken} from "../typechain-types";
+// import {FakeRealityETH} from "../typechain-types";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import {PrecogRealityOracleV3} from "../typechain-types";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {PrecogMasterV8, PrecogMarketV8} from "../typechain-types";
 import {DeployResult} from "hardhat-deploy/dist/types";
 import {TransactionReceipt} from "ethers";
@@ -11,7 +16,6 @@ import promptSync from 'prompt-sync';
  */
 const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvironment): Promise<void> {
     // Base Sepolia (all deployed contracts):
-    // - PrecogToken: 0x7779ec685Aa0bf5483B3e0c15dAf246d2d978888 (latest)
     // - PrecogMasterV1: 0x1eB90323aE74E5FBc3241c1D074cFd0b117d7e8E
     // - PrecogMasterV2: 0x0D512A2176737Fdb5C9973DB92fB100A234cD738
     // - ConditionalTokensV2: 0xAac4F52016bc3A97D0d841A90f51fA1d7C2BB52b
@@ -27,14 +31,20 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
     // - PrecogMarketV6: 0x0984Bed9E120774820D717df6A4ee217268A7b65
     // - PrecogMarketV7: 0xCA1Ef8240D50c797Fee174a082dF5B47aFB328AE
     // - PrecogMarketV8: 0xfB4CD4779980896893B1855ad5A89E3ACCA7fc87 (latest)
-    // - LatentTokenV1: 0x3cE4e93Ac026Ba86d02AFB9e5E9926b7AcdE0360 (latest)
     // - MateTokenV1: 0xC139C86de76DF41c041A30853C3958427fA7CEbD (latest)
     // - PrecogRealityOracleV1: 0x3a2FEdD33Cde9c825a34a0efBC1a92870E53c4ef
-    // - PrecogRealityOracleV2: 0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37 (latest)
+    // - PrecogRealityOracleV2: 0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37
+    // - PrecogRealityOracleV3: 0xcA96BBDC3e45614c6F49CcF8cb913C0965Dca2E5 (latest)
     // Base Mainnet (all deployed contracts):
     // - Put here old deployments
     // - PrecogMarketV8: 0x44769bE6853918e939281b2f669f9a58608Cb55B (latest)
-    // - PrecogMasterV8 0x00000000000c109080dfa976923384b97165a57a (latest)
+    // - PrecogMasterV8: 0x00000000000c109080dfa976923384b97165a57a (latest)
+    // - PrecogRealityOracleV2: 0xd7bE03206daFa4552ab58CD3CFC191426404C77D
+    // - PrecogRealityOracleV3: 0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073 (latest)
+    // Arbitrum Mainnet (all deployed contracts):
+    // - PrecogMasterV8: 0x0000000000990400E12543B7f400136e8672E2F0 (latest)
+    // - PrecogMarketV8: 0x44769bE6853918e939281b2f669f9a58608Cb55B (latest)
+    // - PrecogRealityOracleV3: 0x87Ae8A07529363309a0eFcD2ce83c1a7f2B7ccB5 (latest)
 
     const {deployer} = await hre.getNamedAccounts();
     const {deploy} = hre.deployments;
@@ -59,6 +69,37 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
     console.log(`\tmaxFeePerGas: ${hre.ethers.formatUnits(feeData.maxFeePerGas ?? 0, 'gwei')}`);
     console.log(`\t PriorityFee: ${hre.ethers.formatUnits(feeData.maxPriorityFeePerGas ?? 0, 'gwei')}`);
 
+    // Code Block: Reach some target nonce before any deploy
+    // // Ask for confirmation before continuing with the script
+    // const confirmNonce = prompt("\n> Are you sure to send txs to reach target nonce? (y/n): ")
+    // if (confirmNonce !== 'y') {
+    //     console.log("\n> Deploy aborted!\n");
+    //     return;
+    // }
+    // // Make all required Txs to reach `targetDeployNonce`
+    // const targetDeployNonce = 10;
+    // let deployNonce = lastNonce;
+    // const signer = await hre.ethers.getSigner(deployer);
+    // while (targetDeployNonce && deployNonce < targetDeployNonce) {
+    //     console.log(`> Reaching target nonce (current: ${deployNonce}, target: ${targetDeployNonce})...`);
+    //     // Send tx just to increase nonce (21k gas use to reduce costs)
+    //     const tx = await signer.sendTransaction({
+    //         to: await signer.getAddress(),
+    //         value: 0,
+    //         gasLimit: 21_000
+    //     });
+    //     await tx.wait();
+    //     console.log(`\tTx sent!, Hash: ${tx.hash}, Nonce: ${tx.nonce}`);
+    //     deployNonce = tx.nonce + 1;
+    //     if (deployNonce == targetDeployNonce) {
+    //         console.log(`\n> Target reach!, Next deploy nonce: ${deployNonce}`);
+    //         const reachEndBalance: bigint = await provider.getBalance(deployer);
+    //         const reachTargetCost: bigint = balance - reachEndBalance;
+    //         const reachTargetCostInEth: string = hre.ethers.formatEther(reachTargetCost);
+    //         console.log(`> Total cost to reach target: ${reachTargetCostInEth} eth\n`);
+    //     }
+    // }
+
     // Ask for confirmation before continuing with the script
     const confirmDeploy = prompt("\n> Are you sure to deploy the next contract/s? (y/n): ")
     if (confirmDeploy !== 'y') {
@@ -66,14 +107,16 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
         return;
     }
 
-    // // Code Block: Precog Master & Market deploy
+    // Code Block: Precog Master & Market deploy
     const masterContractName: string = "PrecogMasterV8";
+    // eslint-disable-next-line prefer-const
     tx = await deploy(masterContractName, {
         from: deployer,
         args: [initialAdmin],
         log: false, // Shows info about the deployment (tx hash, contract address and gas use)
         autoMine: true,  // Force node to avoid mining wait time
     });
+    console.log("> Verifying deploy...");
     await new Promise(resolve => setTimeout(resolve, 6000)); // Wait some blocks to fetch deployment
     const precogMaster: PrecogMasterV8 = await hre.ethers.getContract(masterContractName, deployer);
     console.log(`\n> ${masterContractName}! (new deploy: ${tx.newlyDeployed})`);
@@ -84,25 +127,68 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
     console.log(`        Admin: ${initialAdmin} (${isAdmin})`);
     console.log("");
 
-    const marketContractName: string = "PrecogMarketV8";
-    tx = await deploy(marketContractName, {
-        from: deployer,
-        args: [],
-        log: false, // Shows info about the deployment (tx hash, contract address and gas use)
-        autoMine: true,  // Force node to avoid mining wait time
-    });
-    await new Promise(resolve => setTimeout(resolve, 6000)); // Wait some blocks to fetch deployment
-    const precogMarket: PrecogMarketV8 = await hre.ethers.getContract(marketContractName, deployer);
-    if (tx.newlyDeployed) {
-        const precogTokenAddress = '0x7779ec685Aa0bf5483B3e0c15dAf246d2d978888';
-        await precogMarket.initialize(precogTokenAddress);
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait some blocks to fetch initialization
-    }
-    console.log(`\n> ${marketContractName}! (new deploy: ${tx.newlyDeployed})`);
-    console.log("     Contract:", await precogMarket.getAddress());
-    console.log("        token:", await precogMarket.token());
-    console.log("        owner:", await precogMarket.owner());
-    console.log("");
+    // const marketContractName: string = "PrecogMarketV8";
+    // tx = await deploy(marketContractName, {
+    //     from: deployer,
+    //     args: [],
+    //     log: false, // Shows info about the deployment (tx hash, contract address and gas use)
+    //     autoMine: true,  // Force node to avoid mining wait time
+    // });
+    // console.log("> Verifying deploy...");
+    // await new Promise(resolve => setTimeout(resolve, 6000)); // Wait some blocks to fetch deployment
+    // const precogMarket: PrecogMarketV8 = await hre.ethers.getContract(marketContractName, deployer);
+    // if (tx.newlyDeployed) {
+    //     const nativeErcAddress = '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1';  // Arbitrum WETH
+    //     // const nativeErcAddress = '0x7779ec685Aa0bf5483B3e0c15dAf246d2d978888';  // Custom token
+    //     await precogMarket.initialize(nativeErcAddress);
+    //     await new Promise(resolve => setTimeout(resolve, 3000)); // Wait some blocks to fetch initialization
+    // }
+    // console.log(`\n> ${marketContractName}! (new deploy: ${tx.newlyDeployed})`);
+    // console.log("     Contract:", await precogMarket.getAddress());
+    // console.log("        token:", await precogMarket.token());
+    // console.log("        owner:", await precogMarket.owner());
+    // console.log("");
+    //
+    // // // Code Block: Precog Reality Oracle deploy
+    // const oracleContractName: string = "PrecogRealityOracleV3";
+    // // eslint-disable-next-line prefer-const
+    // tx = await deploy(oracleContractName, {
+    //     from: deployer,
+    //     args: [initialAdmin],
+    //     log: false, // Shows info about the deployment (tx hash, contract address and gas use)
+    //     autoMine: true,  // Force node to avoid mining wait time
+    // });
+    // const precogOracle: PrecogRealityOracleV3 = await hre.ethers.getContract(oracleContractName, deployer);
+    // console.log(`\n> ${oracleContractName}! (new deploy: ${tx.newlyDeployed})`);
+    // console.log("     Contract:", await precogOracle.getAddress());
+    // console.log("\n");
+
+    // // Code Block: Independent Collateral deploy (just to testnet)
+    // const deployedToken = '0xC139C86de76DF41c041A30853C3958427fA7CEbD';
+    // const tokenName = 'MateToken'  // Token contract name
+    // let customToken: MateToken = await hre.ethers.getContractAt(tokenName, deployedToken);
+    // const deployedTokenCode: any = await customToken.getDeployedCode();
+    // if (deployedTokenCode == null) {
+    //     console.log("Deploying....");
+    //     tx = await deploy(tokenName, {
+    //         from: deployer,
+    //         args: [initialOwner],
+    //         log: false, // Shows info about the deployment (tx hash, contract address and gas use)
+    //         autoMine: true,  // Force node to avoid mining wait time
+    //     });
+    //     customToken = await hre.ethers.getContract(tokenName, deployer);
+    // } else {
+    //     console.log("Using already deployed....");
+    //     tx = {address: deployedToken, newlyDeployed: false, abi: []};
+    // }
+    // const customTokenAddress: string = await customToken.getAddress();
+    // console.log(`\n> ${tokenName} found! (new deploy: ${tx.newlyDeployed})`);
+    // console.log("  Contract:", customTokenAddress);
+    // console.log("      Name:", await customToken.name());
+    // console.log("    Symbol:", await customToken.symbol());
+    // console.log("  Decimals:", await customToken.decimals());
+    // console.log("     Owner:", await customToken.owner());
+    // console.log("\n");
 
     // Calculate deploy cost and balances and show a summary
     const newBalance: bigint = await provider.getBalance(deployer);

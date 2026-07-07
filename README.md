@@ -1,5 +1,6 @@
 # Precog Dev
 This repository contains all smart contracts for the Precog forecasting protocol ([**Precog Markets**](https://precog.markets/)).
+> Precog App Site: [**Precog Core**](https://core.precog.markets/)
 <hr/>
 
 #### Prediction Markets and LMSR & LS-LMSR theory:
@@ -14,14 +15,20 @@ This repository contains all smart contracts for the Precog forecasting protocol
 - [Contracts Implementations](/packages/hardhat/contracts)
 - [Test Implementations](/packages/hardhat/test)
 - [Deploy and Helpers](/packages/hardhat/scripts)
-> Precog Dev site: [**Precog Dev**](https://dev.precog.markets/) (here the deployed version of this repo)
+> Precog Dev Site: [**Precog Dev**](https://dev.precog.markets/) (here the deployed version of this repo)
 <hr/>
 
-## Mainnet Latest Deployments (Base)
+## Mainnet Latest Deployments
+
+### BASE (`chain: 8453`)
 - **PrecogMaster**: [0x00000000000c109080dfa976923384b97165a57a](https://basescan.org/address/0x00000000000c109080dfa976923384b97165a57a)
 - **PrecogMarket**: [0x44769bE6853918e939281b2f669f9a58608Cb55B](https://basescan.org/address/0x44769bE6853918e939281b2f669f9a58608Cb55B) (Recipe for all markets)
-- **PrecogRealityOracleV3**: [0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073](https://basescan.org/address/0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073) 
-> Precog app site: [**Precog Core**](https://core.precog.markets/)
+- **PrecogRealityOracle**: [0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073](https://basescan.org/address/0xbb49B9c5B73b2eBAecee8272d2B8B3bEBe16F073) 
+
+### ARBITRUM (`chain: 42161`)
+- **PrecogMaster**: [0x0000000000990400E12543B7f400136e8672E2F0](https://arbiscan.io/address/0x0000000000990400e12543b7f400136e8672e2f0)
+- **PrecogMarket**: [0x44769bE6853918e939281b2f669f9a58608Cb55B](https://arbiscan.io/address/0x44769be6853918e939281b2f669f9a58608cb55b) (Recipe for all markets)
+- **PrecogRealityOracle**: [0x87Ae8A07529363309a0eFcD2ce83c1a7f2B7ccB5](https://arbiscan.io/address/0x87ae8a07529363309a0efcd2ce83c1a7f2b7ccb5) 
 <hr/>
 
 ## Testnet Latest Deployments (Base Sepolia)

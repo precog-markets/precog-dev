@@ -13,8 +13,7 @@ export type ScaffoldConfig = {
 
 const scaffoldConfig = {
     // The networks on which your DApp is live
-    targetNetworks: [chains.base, chains.baseSepolia],
-    // targetNetworks: [chains.baseSepolia],
+    targetNetworks: [chains.base, chains.baseSepolia, chains.arbitrum],
     // targetNetworks: [chains.hardhat],
 
     // The interval at which your front-end polls the RPC servers for new data
@@ -25,7 +24,7 @@ const scaffoldConfig = {
     // You can get your own at https://dashboard.alchemyapi.io
     // It's recommended to store it in an env variable:
     // .env.local for local testing, and in the Vercel/system env config for live apps.
-    alchemyApiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF",
+    alchemyApiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "IZYEU2cWBgnFmgiTAgpWD",
 
     nodeProviderUrl: process.env.NEXT_PUBLIC_NODE_PROVIDER_URL || "http://localhost:8545",
 

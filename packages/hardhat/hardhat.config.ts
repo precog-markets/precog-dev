@@ -24,7 +24,7 @@ const aux3PrivateKey: string = "0x6a76ba45681f6b797ddccea46af08ab0fcb13872f6feee
 // If not set, it uses the hardhat account private key.
 const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY ?? ciPrivateKey;
 // If not set, it uses a Scafold-eth public api key
-const providerApiKey = process.env.ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
+const providerApiKey = process.env.ALCHEMY_API_KEY || "IZYEU2cWBgnFmgiTAgpWD";
 const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 
 
@@ -65,16 +65,16 @@ const config: HardhatUserConfig = {
       forking: {
         // url: `https://eth-mainnet.g.alchemy.com/v2/${providerApiKey}`,  // ETH Mainnet
         // blockNumber: 24_000_000,  // ETH Mainnet fork
-        url: `https://base-mainnet.g.alchemy.com/v2/${providerApiKey}`,  // Base Mainnet
-        blockNumber: 42_000_000,  // Base Mainnet fork block
+        url: `https://arb-mainnet.g.alchemy.com/v2/${providerApiKey}`,  // Arbitrum Mainnet
+        blockNumber: 469_000_000,  // Arbitrum Mainnet fork block
+        // url: `https://base-mainnet.g.alchemy.com/v2/${providerApiKey}`,  // Base Mainnet
+        // blockNumber: 45_000_000,  // Base Mainnet fork block
         // url: `https://base-sepolia.g.alchemy.com/v2/${providerApiKey}`,  // Base Sepolia
-        // blockNumber: 38_000_000,  // Base Sepoli fork block
-        // url: `https://worldchain-mainnet.g.alchemy.com/v2/${providerApiKey}`,  // World Mainnet
-        // url: `https://worldchain-sepolia.g.alchemy.com/v2/${providerApiKey}`,  // World Sepolia
+        // blockNumber: 41_000_000,  // Base Sepolia fork block
         enabled: process.env.MAINNET_FORKING_ENABLED === "true",
       },
       accounts: [
-        {privateKey: deployerPrivateKey, balance: "200000000000000000"},  // 0.2 eth
+        {privateKey: deployerPrivateKey, balance: "250000000000000000"},  // 0.25 eth
         {privateKey: faucetPrivateKey, balance: "1000000000000000000000"},  // 1 eth
         {privateKey: auxPrivateKey, balance: "1000000000000000000000"},  // 1 eth
         {privateKey: aux2PrivateKey, balance: "1000000000000000000000"},  // 1 eth

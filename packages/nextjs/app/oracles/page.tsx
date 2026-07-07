@@ -3,23 +3,33 @@
 import React, { useState, useEffect } from "react";
 import type { NextPage } from "next";
 import { usePublicClient, useWalletClient } from "wagmi";
-import { isAddress, parseEther, zeroAddress } from "viem";
+import { formatEther, isAddress, parseEther, zeroAddress } from "viem";
 import type { Address } from "viem";
 import { getBlockExplorerAddressLink, notification } from "~~/utils/scaffold-eth";
-import { getContractsByNetwork } from "~~/utils/scaffold-eth/contractsData";
+import {
+  getAvailablePrecogRealityOracleVersions,
+  getContractsByNetwork,
+  getPrecogRealityOracleContractKey,
+  type PrecogRealityOracleVersion,
+} from "~~/utils/scaffold-eth/contractsData";
 import { ArrowTopRightOnSquareIcon, InformationCircleIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
 import { toDateString } from "~~/utils/dates";
+import { normalizeCategoryCsv } from "~~/utils/marketCategories";
 
 const Oracle: NextPage = () => {
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const { targetNetwork } = useTargetNetwork();
+  const [oracleVersion, setOracleVersion] = useState<PrecogRealityOracleVersion>("v3");
 
   // Get oracle info for current network
+  const availableOracleVersions = getAvailablePrecogRealityOracleVersions(targetNetwork.id);
+  const dropdownOracleVersions = availableOracleVersions.length > 0 ? availableOracleVersions : (["v3"] as PrecogRealityOracleVersion[]);
   const contractsData = getContractsByNetwork(targetNetwork.id);
-  const oracle_address = contractsData.PrecogRealityOracleV2?.address;
-  const oracle_abi = contractsData.PrecogRealityOracleV2?.abi;
+  const oracleContractKey = getPrecogRealityOracleContractKey(oracleVersion);
+  const oracle_address = contractsData[oracleContractKey]?.address;
+  const oracle_abi = contractsData[oracleContractKey]?.abi;
 
   // Form states
   const [marketId, setMarketId] = useState("");
@@ -37,6 +47,9 @@ const Oracle: NextPage = () => {
   // Market info states
   const [questionInfo, setQuestionInfo] = useState<any>(null);
   const [resultInfo, setResultInfo] = useState<any>(null);
+  const [marketState, setMarketState] = useState<any>(null);
+  const [realityBalance, setRealityBalance] = useState<bigint | null>(null);
+  const [maxAnswerBond, setMaxAnswerBond] = useState<bigint | null>(null);
 
   // Contract addresses states
   const [precogMasterAddress, setPrecogMasterAddress] = useState<string>("");
@@ -53,6 +66,24 @@ const Oracle: NextPage = () => {
   // Withdraw to EOA: token address (empty = ETH)
   const [withdrawTokenAddress, setWithdrawTokenAddress] = useState("");
   const [openTooltip, setOpenTooltip] = useState<string | null>(null);
+
+  useEffect(() => {
+    const currentAvailable = getAvailablePrecogRealityOracleVersions(targetNetwork.id);
+    const currentDropdown = currentAvailable.length > 0 ? currentAvailable : (["v3"] as PrecogRealityOracleVersion[]);
+    const preferred = currentDropdown.includes("v3") ? "v3" : currentDropdown[0];
+    setOracleVersion(preferred);
+  }, [targetNetwork.id]);
+
+  useEffect(() => {
+    setQuestionInfo(null);
+    setResultInfo(null);
+    setMarketState(null);
+    setRealityBalance(null);
+    setMaxAnswerBond(null);
+    setPrecogMasterAddress("");
+    setRealityAddress("");
+    setArbitratorAddress("");
+  }, [targetNetwork.id, oracleVersion]);
 
   // Close tooltip when clicking outside
   useEffect(() => {
@@ -112,6 +143,7 @@ const Oracle: NextPage = () => {
 
     try {
       const outcomeArray = outcomes.split(",").map(o => o.trim());
+      const normalizedCategory = normalizeCategoryCsv(category);
 
       console.log("Opening question with args:", {
         marketId: BigInt(marketId),
@@ -119,7 +151,7 @@ const Oracle: NextPage = () => {
         templateId: Number(templateId),
         question,
         outcomeArray,
-        category,
+        category: normalizedCategory,
         timeout: Number(timeout),
         startTime: Math.floor(Date.now() / 1000)
       });
@@ -134,7 +166,7 @@ const Oracle: NextPage = () => {
           Number(templateId),
           question,
           outcomeArray,
-          category,
+          normalizedCategory,
           Number(timeout),
           Math.floor(Date.now() / 1000)
         ],
@@ -209,6 +241,33 @@ const Oracle: NextPage = () => {
     }
   };
 
+  const handleEnableDatesUpdate = async () => {
+    if (!walletClient || !publicClient) {
+      notification.error("Please connect your wallet");
+      return;
+    }
+
+    try {
+      console.log("Enabling dates update with args:", {
+        marketId: BigInt(marketId)
+      });
+
+      const { request } = await publicClient.simulateContract({
+        address: oracle_address,
+        abi: oracle_abi,
+        functionName: "marketEnableDatesUpdate",
+        args: [BigInt(marketId)],
+        account: walletClient.account,
+      });
+      await walletClient.writeContract(request);
+      notification.success("Market dates update enabled successfully!");
+    } catch (error: any) {
+      const errorMessage = error?.shortMessage || error?.message || "Failed to enable market dates update";
+      notification.error(errorMessage);
+      console.error(error);
+    }
+  };
+
   const fetchQuestionInfo = async () => {
     if (!publicClient) {
       notification.error("Please connect your wallet");
@@ -248,6 +307,69 @@ const Oracle: NextPage = () => {
       const errorMessage = error?.shortMessage || error?.message || "Failed to fetch result info";
       notification.error(errorMessage);
       console.error("Failed to fetch result info:", error);
+    }
+  };
+
+  const fetchMarketState = async () => {
+    if (!publicClient) {
+      notification.error("Please connect your wallet");
+      return;
+    }
+
+    try {
+      const data = await publicClient.readContract({
+        address: oracle_address,
+        abi: oracle_abi,
+        functionName: "getMarketState",
+        args: [BigInt(marketId)],
+      });
+      setMarketState(data);
+    } catch (error: any) {
+      const errorMessage = error?.shortMessage || error?.message || "Failed to fetch market state";
+      notification.error(errorMessage);
+      console.error("Failed to fetch market state:", error);
+    }
+  };
+
+  const fetchRealityBalance = async () => {
+    if (!publicClient) {
+      notification.error("Please connect your wallet");
+      return;
+    }
+
+    try {
+      const data = await publicClient.readContract({
+        address: oracle_address,
+        abi: oracle_abi,
+        functionName: "getRealityBalance",
+        args: [],
+      });
+      setRealityBalance(data as bigint);
+    } catch (error: any) {
+      const errorMessage = error?.shortMessage || error?.message || "Failed to fetch Reality balance";
+      notification.error(errorMessage);
+      console.error("Failed to fetch Reality balance:", error);
+    }
+  };
+
+  const fetchMaxAnswerBond = async () => {
+    if (!publicClient) {
+      notification.error("Please connect your wallet");
+      return;
+    }
+
+    try {
+      const data = await publicClient.readContract({
+        address: oracle_address,
+        abi: oracle_abi,
+        functionName: "maxAnswerBond",
+        args: [],
+      });
+      setMaxAnswerBond(data as bigint);
+    } catch (error: any) {
+      const errorMessage = error?.shortMessage || error?.message || "Failed to fetch max answer bond";
+      notification.error(errorMessage);
+      console.error("Failed to fetch max answer bond:", error);
     }
   };
 
@@ -376,7 +498,7 @@ const Oracle: NextPage = () => {
       didFill = true;
     }
     if (!answerers.trim()) {
-      setAnswerers("0xbd8B7cb4924aAdf579b6Dbd77CA6cF6e56029f37");
+      setAnswerers(oracle_address || "");
       didFill = true;
     }
     if (!bonds.trim()) {
@@ -454,7 +576,20 @@ const Oracle: NextPage = () => {
           {/* Oracle Card - Following MarketList styling */}
           <div className="w-full flex flex-col gap-4 font-mono">
             <div className="flex justify-between items-center mb-4 flex-col sm:flex-row">
-              <h2 className="text-2xl font-bold m-0">Precog Oracles</h2>
+              <div className="flex items-center gap-4 flex-wrap">
+                <h2 className="text-2xl font-bold m-0">Precog Oracles</h2>
+                <select
+                  className="select select-bordered select-sm font-mono font-bold"
+                  value={oracleVersion}
+                  onChange={e => setOracleVersion(e.target.value as PrecogRealityOracleVersion)}
+                >
+                  {dropdownOracleVersions.map(version => (
+                    <option key={version} value={version}>
+                      {version.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Oracle Info Card */}
@@ -465,7 +600,7 @@ const Oracle: NextPage = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                     <h3 className="text-lg font-bold text-base-content/70 break-words m-0">
                       <span className="text-base-content/70 mr-2">{'>'}</span>
-                      PRECOG REALITY ORACLE V2
+                      PRECOG REALITY ORACLE {oracleVersion.toUpperCase()}
                     </h3>
                     <div className="text-sm">
                       <span className="text-base-content/70">
@@ -596,7 +731,8 @@ const Oracle: NextPage = () => {
                               />
                               <input
                                 type="text"
-                                placeholder="CATEGORY"
+                                placeholder="CATEGORY1,CATEGORY2"
+                                title="Comma-separated categories"
                                 className="input input-bordered input-sm font-mono text-center"
                                 value={category}
                                 onChange={e => setCategory(e.target.value)}
@@ -668,6 +804,17 @@ const Oracle: NextPage = () => {
                             >
                               REPORT RESULT
                             </button>
+                            {oracleVersion === "v3" && (
+                              <>
+                                <div className="divider my-0 text-xs text-base-content/50">V3 MARKET OPS</div>
+                                <button
+                                  className="btn btn-accent btn-sm font-mono"
+                                  onClick={handleEnableDatesUpdate}
+                                >
+                                  ENABLE DATES UPDATE
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -697,7 +844,73 @@ const Oracle: NextPage = () => {
                               >
                                 FETCH RESULT
                               </button>
+                              <button
+                                className="btn btn-accent btn-sm font-mono flex-1"
+                                onClick={fetchMarketState}
+                              >
+                                FETCH STATE
+                              </button>
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              <button
+                                className="btn btn-accent btn-sm font-mono"
+                                onClick={fetchRealityBalance}
+                              >
+                                FETCH REALITY BALANCE
+                              </button>
+                              <button
+                                className="btn btn-accent btn-sm font-mono"
+                                onClick={fetchMaxAnswerBond}
+                              >
+                                FETCH MAX ANSWER BOND
+                              </button>
+                            </div>
+
+                            {/* Oracle Info Display */}
+                            {(realityBalance !== null || maxAnswerBond !== null) && (
+                              <div className="mt-4">
+                                <h5 className="font-bold text-base-content/70 mb-2">Oracle Info</h5>
+                                <div className="bg-base-200 p-3 rounded text-xs space-y-1">
+                                  {realityBalance !== null && (
+                                    <p>
+                                      <span className="font-bold text-accent">REALITY BALANCE:</span>{" "}
+                                      {realityBalance.toString()} WEI ({formatEther(realityBalance)} ETH)
+                                    </p>
+                                  )}
+                                  {maxAnswerBond !== null && (
+                                    <p>
+                                      <span className="font-bold text-accent">MAX ANSWER BOND:</span>{" "}
+                                      {maxAnswerBond.toString()} WEI ({formatEther(maxAnswerBond)} ETH)
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Market State Display */}
+                            {marketState && (
+                              <div className="mt-4">
+                                <h5 className="font-bold text-base-content/70 mb-2">Market State</h5>
+                                <div className="bg-base-200 p-3 rounded text-xs space-y-1">
+                                  <p className="m-0">
+                                    <span className="font-bold text-accent">REGISTERED:</span>{" "}
+                                    {marketState[0] ? "YES" : "NO"}
+                                  </p>
+                                  <p className="m-0">
+                                    <span className="font-bold text-accent">ANSWERED:</span>{" "}
+                                    {marketState[1] ? "YES" : "NO"}
+                                  </p>
+                                  <p className="m-0">
+                                    <span className="font-bold text-accent">FINALIZED:</span>{" "}
+                                    {marketState[2] ? "YES" : "NO"}
+                                  </p>
+                                  <p className="m-0">
+                                    <span className="font-bold text-accent">REPORTED:</span>{" "}
+                                    {marketState[3] ? "YES" : "NO"}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Question Info Display */}
                             {questionInfo && (

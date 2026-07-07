@@ -33,8 +33,9 @@ contract FakeRealityETH is IRealityETH {
         uint32 opening_ts,
         uint256 nonce
     ) external payable override returns (bytes32 question_id) {
-        require(template_id != 0, "Not empty");
-        require(opening_ts != 0, "Not empty");
+        require(template_id != 0, "Empty template");
+        require(timeout != 0, "Empty timeout");
+        require(opening_ts != 0, "Empty opening ts");
         question_id = keccak256(abi.encodePacked(question, nonce, block.timestamp));
         bounties[question_id] = msg.value;
         timeouts[question_id] = timeout;
@@ -52,8 +53,8 @@ contract FakeRealityETH is IRealityETH {
         uint256 max_previous,
         address answerer
     ) external payable override {
-        require(max_previous >= 0, "Not empty");
-        require(answerer != address(0), "Not empty");
+        require(max_previous >= 0, "Empty max previous");
+        require(answerer != address(0), "Empty answerer");
         bestAnswers[question_id] = answer;
         // Update finalize timestamp: current time + timeout
         finalizeTimestamps[question_id] = uint32(block.timestamp + timeouts[question_id]);
@@ -114,7 +115,7 @@ contract FakeRealityETH is IRealityETH {
         uint256[] calldata bonds,
         bytes32[] calldata answers
     ) external override {
-        require(history_hashes.length != 0, "Not empty");
+        require(history_hashes.length != 0, "Empty history");
         require(
             addrs.length == bonds.length && 
             bonds.length == answers.length,
@@ -139,12 +140,11 @@ contract FakeRealityETH is IRealityETH {
         uint32 opening_ts,
         uint256 nonce,
         uint256 min_bond
-    ) external payable override returns (bytes32) {
-        require(template_id != 0, "Not empty");
-        require(arbitrator != address(0), "Not empty");
-        require(timeout != 0, "Not empty");
-        require(opening_ts != 0, "Not empty");
-        bytes32 question_id = keccak256(abi.encodePacked(question, nonce, block.timestamp));
+    ) external payable override returns (bytes32 question_id) {
+        require(template_id != 0, "Empty template");
+        require(timeout != 0, "Empty timeout");
+        require(opening_ts != 0, "Empty opening ts");
+        question_id = keccak256(abi.encodePacked(question, nonce, block.timestamp));
         minBonds[question_id] = min_bond;
         bounties[question_id] = msg.value;
         timeouts[question_id] = timeout;
@@ -152,6 +152,7 @@ contract FakeRealityETH is IRealityETH {
         questions[question_id] = question;
         // Set initial finalize timestamp: current block time + timeout
         finalizeTimestamps[question_id] = uint32(block.timestamp + timeout);
+        lastQuestionId = question_id;
         return question_id;
     }
 
@@ -202,7 +203,7 @@ contract FakeRealityETH is IRealityETH {
         uint32 opening_ts,
         uint256 nonce
     ) external payable override returns (bytes32) {
-        require(bytes(content).length != 0, "Not empty");
+        require(bytes(content).length != 0, "Empty content");
         return this.askQuestion(0, question, arbitrator, timeout, opening_ts, nonce);
     }
 
