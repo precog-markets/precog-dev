@@ -1,17 +1,18 @@
 import { useState } from "react";
-import Link from "next/link";
-import { formatUnits } from "viem";
-import { useAccount } from "wagmi";
+import { formatUnits, parseUnits, erc20Abi } from "viem";
+import { useAccount, useReadContract } from "wagmi";
 import { Pie, PieChart, Sector } from "recharts";
 import { PieSectorDataItem } from "recharts/types/polar/Pie";
-import { ArrowTopRightOnSquareIcon, ChartBarSquareIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { useScaffoldContract } from "~~/hooks/scaffold-eth";
 import { useAccountOutcomeBalances, usePrecogMarketDetails, usePrecogMarketPrices, type MarketInfoV8 } from "~~/hooks/usePrecogMarketData";
 import { useMarketBuyCalculations, useMarketSellCalculations, useMarketSetupInfoV8, type MarketSetupInfoV8 as MarketSetupInfoV8Data } from "~~/hooks/useMarketCalculations";
 import { useMarketActions } from "~~/hooks/useMarketActions";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth/networks";
+import { formatCategoryCsv } from "~~/utils/marketCategories";
 import { fromInt128toNumber } from "~~/utils/numbers";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "./Charts";
+import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
 
 export function MarketListV8({
   markets,
@@ -121,7 +122,7 @@ function MarketItemV8({
               )}
               <div>
                 <span className="font-bold text-base-content/70">Category: </span>
-                {market.category || "N/A"}
+                {formatCategoryCsv(market.category) || "N/A"}
               </div>
               <div className="break-words">
                 <span className="font-bold text-base-content/70">Outcomes: </span>
@@ -206,7 +207,7 @@ function MarketDetailedInfoV8({ market }: { market: MarketInfoV8 }) {
   const { executeReport, isPending: isReporting } = useMarketActions("v8");
   const [selectedOutcome, setSelectedOutcome] = useState("");
   const { targetNetwork } = useTargetNetwork();
-  const { data: setup, isLoading: isSetupLoading, isError: isSetupError } = useMarketSetupInfoV8(market.marketId, true);
+  const { data: setup, isLoading: isSetupLoading, isError: isSetupError } = useMarketSetupInfoV8(market.marketId, true, targetNetwork.id);
   const {
     data: details,
     isLoading,
@@ -431,13 +432,42 @@ function MarketTradingPanelV8({
   const [inputValue, setInputValue] = useState("");
   const [costToQuote, setCostToQuote] = useState<number | null>(null);
   const [sharesToQuote, setSharesToQuote] = useState<number | null>(null);
-  const { executeBuy, executeSell, executeRedeem, isPending } = useMarketActions("v8");
+  const { executeBuy, executeOwnedBuy, executePermit2Buy, executeSell, executeRedeem, isPending } = useMarketActions("v8");
+
+  const { data: masterContract } = useScaffoldContract({ contractName: "PrecogMasterV8" });
+  const { data: permit2Address, isLoading: isLoadingPermit2Address } = useReadContract({
+    chainId: targetNetwork.id,
+    address: masterContract?.address,
+    abi: masterContract?.abi,
+    functionName: "PERMIT2",
+    query: { enabled: !!masterContract },
+  });
+  const { data: isOwnedCollateral, isLoading: isLoadingOwnedCollateral } = useReadContract({
+    chainId: targetNetwork.id,
+    address: masterContract?.address,
+    abi: masterContract?.abi,
+    functionName: "ownedCollaterals",
+    args: [market.collateral],
+    query: { enabled: !!masterContract },
+  });
+
+  const { data: permit2Allowance, isLoading: isLoadingPermit2Allowance, refetch: refetchPermit2Allowance } = useReadContract({
+    chainId: targetNetwork.id,
+    address: market.collateral as `0x${string}`,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [connectedAddress as `0x${string}`, permit2Address as `0x${string}`],
+    query: { enabled: !!connectedAddress && !!permit2Address },
+  });
 
   const handleGetQuote = () => {
     const amount = Number(inputValue);
     if (amount > 0) {
       if (tradeType === "BUY") {
         setCostToQuote(amount);
+        if (permit2Address) {
+          refetchPermit2Allowance();
+        }
       } else {
         setSharesToQuote(amount);
       }
@@ -507,6 +537,18 @@ function MarketTradingPanelV8({
       </div>
     );
   }
+
+  // Convert the quoted spend amount to wei for comparison against the Permit2 allowance.
+  // Falls back to 0n when no quote has been requested yet (disables the button).
+  let quotedSpendWei: bigint;
+  if (costToQuote !== null && accountShares) {
+    // User has requested a quote , convert the input amount to wei using the collateral token decimals
+    quotedSpendWei = parseUnits(costToQuote.toString(), accountShares.tokenDecimals);
+  } else {
+    // No quote yet, treat as zero so the Permit2 allowance check always fails
+    quotedSpendWei = 0n;
+  }
+  const hasInsufficientPermit2Allowance = !permit2Address || !permit2Allowance || permit2Allowance < quotedSpendWei;
 
   let quoteDisplay = null;
   if (tradeType === "BUY" && buyCalculations && !buyCalculations.hasError && buyCalculations.actualShares > 0) {
@@ -691,32 +733,92 @@ function MarketTradingPanelV8({
               <div className="text-xs text-error">Error: {buyCalculations?.error || sellCalculations?.error}</div>
             )}
 
-            <button
-              className="btn btn-primary btn-sm w-32 mt-2"
-              disabled={!quoteDisplay || isLoadingCalculations || isPending}
-              onClick={async () => {
-                if (tradeType === "BUY" && buyCalculations?.actualShares && buyCalculations.actualPrice) {
-                  try {
-                    const maxTokenIn = Number(inputValue);
-                    await executeBuy(market.marketId, outcomeIndex, buyCalculations.actualShares, market.market, maxTokenIn);
-                    resetTradingForm();
-                    await refetchAccountShares();
-                  } catch (error) {
-                    console.error("Buy execution failed:", error);
-                  }
-                } else if (tradeType === "SELL" && sellCalculations && !sellCalculations.hasError && sharesToQuote) {
-                  try {
-                    await executeSell(market.marketId, outcomeIndex, sharesToQuote, market.market);
-                    resetTradingForm();
-                    await refetchAccountShares();
-                  } catch (error) {
-                    console.error("Sell execution failed:", error);
-                  }
-                }
-              }}
-            >
-              {isPending ? <span className="loading loading-spinner loading-xs"></span> : tradeType}
-            </button>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {tradeType === "BUY" ? (
+                <>
+                  <button
+                    className="btn btn-primary btn-sm w-32"
+                    disabled={!quoteDisplay || isLoadingCalculations || isPending}
+                    onClick={async () => {
+                      if (buyCalculations?.actualShares && buyCalculations.actualPrice) {
+                        try {
+                          const maxTokenIn = Number(inputValue);
+                          await executeBuy(market.marketId, outcomeIndex, buyCalculations.actualShares, market.market, maxTokenIn);
+                          resetTradingForm();
+                          await refetchAccountShares();
+                        } catch (error) {
+                          console.error("Buy execution failed:", error);
+                        }
+                      }
+                    }}
+                  >
+                    {isPending ? <span className="loading loading-spinner loading-xs"></span> : "BUY"}
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm w-32"
+                    disabled={!quoteDisplay || isLoadingCalculations || isPending || !isOwnedCollateral || isLoadingOwnedCollateral}
+                    onClick={async () => {
+                      if (buyCalculations?.actualShares && buyCalculations.actualPrice) {
+                        try {
+                          const maxTokenIn = Number(inputValue);
+                          await executeOwnedBuy(market.marketId, outcomeIndex, buyCalculations.actualShares, market.market, maxTokenIn);
+                          resetTradingForm();
+                          await refetchAccountShares();
+                        } catch (error) {
+                          console.error("Owned buy execution failed:", error);
+                        }
+                      }
+                    }}
+                  >
+                    {isPending ? <span className="loading loading-spinner loading-xs"></span> : "OWNED BUY"}
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm w-36"
+                    disabled={!quoteDisplay || isLoadingCalculations || isPending || hasInsufficientPermit2Allowance || isLoadingPermit2Address || isLoadingPermit2Allowance}
+                    onClick={async () => {
+                      if (buyCalculations?.actualShares && buyCalculations.actualPrice && permit2Address) {
+                        try {
+                          const maxTokenIn = Number(inputValue);
+                          await executePermit2Buy(
+                            market.marketId,
+                            outcomeIndex,
+                            buyCalculations.actualShares,
+                            market.market,
+                            maxTokenIn,
+                            permit2Address as `0x${string}`,
+                          );
+                          resetTradingForm();
+                          await refetchAccountShares();
+                          await refetchPermit2Allowance();
+                        } catch (error) {
+                          console.error("Permit2 buy execution failed:", error);
+                        }
+                      }
+                    }}
+                  >
+                    {isPending ? <span className="loading loading-spinner loading-xs"></span> : "PERMIT2 BUY"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-primary btn-sm w-32"
+                  disabled={!quoteDisplay || isLoadingCalculations || isPending}
+                  onClick={async () => {
+                    if (sellCalculations && !sellCalculations.hasError && sharesToQuote) {
+                      try {
+                        await executeSell(market.marketId, outcomeIndex, sharesToQuote, market.market);
+                        resetTradingForm();
+                        await refetchAccountShares();
+                      } catch (error) {
+                        console.error("Sell execution failed:", error);
+                      }
+                    }
+                  }}
+                >
+                  {isPending ? <span className="loading loading-spinner loading-xs"></span> : "SELL"}
+                </button>
+              )}
+            </div>
           </div>
         </>
       )}

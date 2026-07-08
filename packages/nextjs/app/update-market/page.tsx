@@ -11,6 +11,7 @@ import { ArrowRightIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/o
 import { BaseError } from "viem";
 import { ContractName } from "~~/utils/scaffold-eth/contract";
 import { getAvailablePrecogMasterVersions, getPrecogMasterContractKey, type PrecogMasterVersion } from "~~/utils/scaffold-eth/contractsData";
+import { normalizeCategoryCsv } from "~~/utils/marketCategories";
 import { fromInt128toNumber } from "~~/utils/numbers";
 
 // TODO this defaults could have a config shared file with update-market page
@@ -343,11 +344,13 @@ export default function UpdateMarket() {
   ]);
 
   const buildV7UpdateArgs = (startTimestamp: number, endTimestamp: number, parsedOutcomes: string[], originalData: OriginalMarketData) => {
+    const normalizedCategory = normalizeCategoryCsv(category);
+    const normalizedOriginalCategory = normalizeCategoryCsv(originalData.category);
     const startChanged = Math.abs(startTimestamp - originalData.startTimestamp) > 60;
     const endChanged = Math.abs(endTimestamp - originalData.endTimestamp) > 60;
     const nameChanged = name !== originalData.name;
     const descriptionChanged = description !== originalData.description;
-    const categoryChanged = category !== originalData.category;
+    const categoryChanged = normalizedCategory !== normalizedOriginalCategory;
     const outcomesChanged = outcomes !== originalData.outcomes;
     const creatorChanged = creator !== originalData.creator;
     const oracleChanged = oracle !== originalData.oracle;
@@ -356,7 +359,7 @@ export default function UpdateMarket() {
       BigInt(marketId),
       nameChanged ? name : "",
       descriptionChanged ? description : "",
-      categoryChanged ? category : "",
+      categoryChanged ? normalizedCategory : "",
       outcomesChanged ? parsedOutcomes : [],
       startChanged ? BigInt(startTimestamp) : SKIP_UINT,
       endChanged ? BigInt(endTimestamp) : SKIP_UINT,
@@ -366,12 +369,14 @@ export default function UpdateMarket() {
   };
 
   const buildV8UpdateArgs = (startTimestamp: number, endTimestamp: number, parsedOutcomes: string[], originalData: OriginalMarketData) => {
+    const normalizedCategory = normalizeCategoryCsv(category);
+    const normalizedOriginalCategory = normalizeCategoryCsv(originalData.category);
     const startChanged = Math.abs(startTimestamp - originalData.startTimestamp) > 60;
     const endChanged = Math.abs(endTimestamp - originalData.endTimestamp) > 60;
     const questionChanged = name !== originalData.name;
     const resolutionCriteriaChanged = description !== originalData.description;
     const imageURLChanged = imageURL !== originalData.imageURL;
-    const categoryChanged = category !== originalData.category;
+    const categoryChanged = normalizedCategory !== normalizedOriginalCategory;
     const outcomesChanged = outcomes !== originalData.outcomes;
     const creatorChanged = creator !== originalData.creator;
     const oracleChanged = oracle !== originalData.oracle;
@@ -382,7 +387,7 @@ export default function UpdateMarket() {
       questionChanged ? name : "",
       resolutionCriteriaChanged ? description : "",
       imageURLChanged ? imageURL : "",
-      categoryChanged ? category : "",
+      categoryChanged ? normalizedCategory : "",
       outcomesChanged ? parsedOutcomes.join(",") : "",
       (creatorChanged ? creator : SKIP_ADDRESS) as `0x${string}`,
       startChanged ? BigInt(startTimestamp) : SKIP_UINT,
@@ -406,11 +411,13 @@ export default function UpdateMarket() {
       const startTimestamp = calculateTimestamp(startDate, startTime);
       const endTimestamp = calculateTimestamp(endDate, endTime);
       const parsedOutcomes = outcomes.split(",").map(value => value.trim()).filter(Boolean);
+      const normalizedCategory = normalizeCategoryCsv(category);
+      const normalizedOriginalCategory = normalizeCategoryCsv(originalMarketData.category);
 
       console.log(`Updating market ${marketId}...`);
       console.log("> Name/Question:", name);
       console.log("> Description/Resolution:", description);
-      console.log("> Category:", category);
+      console.log("> Category:", normalizedCategory);
       console.log("> Outcomes:", parsedOutcomes);
       console.log("> Start:", new Date(startTimestamp * 1000).toUTCString(), `(${startTimestamp})`);
       console.log("> End:", new Date(endTimestamp * 1000).toUTCString(), `(${endTimestamp})`);
@@ -432,7 +439,7 @@ export default function UpdateMarket() {
       const changes = {
         name: name !== originalMarketData.name ? { from: originalMarketData.name, to: name } : null,
         description: description !== originalMarketData.description ? { from: originalMarketData.description, to: description } : null,
-        category: category !== originalMarketData.category ? { from: originalMarketData.category, to: category } : null,
+        category: normalizedCategory !== normalizedOriginalCategory ? { from: normalizedOriginalCategory, to: normalizedCategory } : null,
         outcomes: outcomes !== originalMarketData.outcomes ? { from: originalMarketData.outcomes, to: outcomes } : null,
         startTimestamp: Math.abs(startTimestamp - originalMarketData.startTimestamp) > 60 ? { from: originalMarketData.startTimestamp, to: startTimestamp } : null,
         endTimestamp: Math.abs(endTimestamp - originalMarketData.endTimestamp) > 60 ? { from: originalMarketData.endTimestamp, to: endTimestamp } : null,
@@ -453,7 +460,7 @@ export default function UpdateMarket() {
         marketId &&
         name &&
         description &&
-        category &&
+        normalizedCategory &&
         parsedOutcomes.length >= 2 &&
         startTimestamp > 0 &&
         endTimestamp > startTimestamp
@@ -528,8 +535,8 @@ export default function UpdateMarket() {
     <>
       <div className="flex flex-row justify-center items-center">
         <div className="flex flex-col gap-2 p-4 mt-3 bg-base-100 rounded-2xl w-1/4 min-w-[400px] overflow-auto">
-          <div className="flex flex-row justify-between items-center gap-4 flex-wrap px-2">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-row justify-between items-center gap-2 flex-wrap px-2">
+            <div className="flex items-center gap-2">
               <div className="text-xl font-bold">Update Market</div>
               <select
                 className="select select-bordered select-sm font-mono font-bold"
@@ -544,7 +551,7 @@ export default function UpdateMarket() {
               </select>
             </div>
             <div className="flex flex-row items-center gap-1">
-              <span className="text-sm">[ Market Id:</span>
+              <span className="text-sm">[ Id:</span>
               <input
                 type="text"
                 value={inputMarketId}
@@ -610,12 +617,12 @@ export default function UpdateMarket() {
               <span className="text-sm font-bold">Category</span>
               <input
                 type="text"
-                placeholder="SPORTS"
+                placeholder="SPORTS,POLITICS"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
                 className="input border border-primary rounded-xl w-full"
               />
-              <span className="text-xs italic pl-3">Note: One word in plural tense.</span>
+              <span className="text-xs italic pl-3">Note: Comma-separated categories.</span>
             </div>
             <div className="flex flex-col items-start px-2">
               <span className="text-sm font-bold">Outcomes</span>

@@ -22,7 +22,7 @@ export const useMarketBuyCalculations = (
   enabled = true,
   version: PrecogMasterVersion = "v8",
 ) => {
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId });
   const masterContractName = getPrecogMasterContractKey(version) as ContractName;
   const { data: masterContract } = useScaffoldContract({
     contractName: masterContractName,
@@ -93,7 +93,7 @@ export const useMarketSellCalculations = (
   enabled = true,
   version: PrecogMasterVersion = "v8",
 ) => {
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId });
   const masterContractName = getPrecogMasterContractKey(version) as ContractName;
   const { data: masterContract } = useScaffoldContract({
     contractName: masterContractName,
@@ -282,15 +282,15 @@ export interface MarketSetupInfoV8 {
  * Fetches and parses PrecogMasterV8.marketSetupInfo(marketId) for display.
  * V8 only; use for the "Market Setup" collapsible tab.
  */
-export const useMarketSetupInfoV8 = (marketId: number, enabled: boolean) => {
-  const publicClient = usePublicClient();
+export const useMarketSetupInfoV8 = (marketId: number, enabled: boolean, chainId?: number) => {
+  const publicClient = usePublicClient({ chainId });
   const masterContractName = getPrecogMasterContractKey("v8") as ContractName;
   const { data: masterContract } = useScaffoldContract({
     contractName: masterContractName,
   });
 
   return useQuery({
-    queryKey: ["marketSetupInfoV8", marketId, publicClient?.chain?.id],
+    queryKey: ["marketSetupInfoV8", marketId, chainId],
     queryFn: async (): Promise<MarketSetupInfoV8> => {
       if (!publicClient || !masterContract) throw new Error("Missing client or master contract");
       const raw = await getMarketV8SetupInfo(marketId, publicClient, masterContract);

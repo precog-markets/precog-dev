@@ -53,7 +53,7 @@ export const HeaderMenuLinks = () => {
     // Check connected address role and enable debug link
     const {address: connectedAddress} = useAccount();
     const {data: isAdmin} = useScaffoldReadContract({
-        contractName: "PrecogMasterV7", functionName: "hasRole", args: [ADMIN_ROLE, connectedAddress]
+        contractName: "PrecogMasterV8", functionName: "hasRole", args: [ADMIN_ROLE, connectedAddress]
     });
 
     // Create the menu links array based on admin status

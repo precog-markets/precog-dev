@@ -281,8 +281,8 @@ contract PrecogMasterV7 is AccessControl {
     function marketCollateralInfo(uint256 marketId) external view
     returns (address collateral, string memory name, string memory symbol, uint8 decimals) {
         IPrecogMarket createdMarket = IPrecogMarket(markets[marketId].market);
-        IPrecogToken collateral = IPrecogToken(createdMarket.token());
-        return (address(collateral), collateral.name(), collateral.symbol(), collateral.decimals());
+        IPrecogToken _collateral = IPrecogToken(createdMarket.token());
+        return (address(_collateral), _collateral.name(), _collateral.symbol(), _collateral.decimals());
     }
 
     /**

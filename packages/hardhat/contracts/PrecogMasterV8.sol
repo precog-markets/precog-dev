@@ -563,9 +563,11 @@ contract PrecogMasterV8 is AccessControl {
            Privileged functions for whitelisted integrations.
     //////////////////////////////////////////////////////////////*/
 
-    /** @notice Creates market without validations (trusted protocol callers) */
+    /** @notice Creates market with minimal validations for trusted protocol callers */
     function createCustomMarket(MarketData memory data, MarketConfig memory config) external onlyCaller
     returns (uint256 newMarketId) {
+        require(allowedOracles[config.oracle], 'Oracle not allowed');
+        require(allowedReceivers[config.collateralFunder], 'Not allowed funder');
         return _createMarket(data, config);
     }
 

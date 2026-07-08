@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { displayTxResult } from "~~/app/debug/_components/contract";
 import { AddressInput } from "~~/components/scaffold-eth";
 import { BaseError } from "viem";
+import { normalizeCategoryCsv } from "~~/utils/marketCategories";
 
 // TODO this defaults could have a config shared file with update-market page
 const defaultCreator = "0x0000000000000000000000000000000000000000";
@@ -34,10 +35,10 @@ const SELL_FEE_OPTIONS: { label: string; factor: number }[] = [
 
 type SharedFormFields = {
   category: string;
-  startDate?: string;
-  startTime?: string;
-  endDate?: string;
-  endTime?: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
   creator: string;
   collateral: string;
   outcomes: string;
@@ -146,7 +147,7 @@ export default function CreateMarket() {
     <>
       <div className="flex flex-row justify-center items-center">
         <div className="flex flex-col gap-2 p-4 mt-3 bg-base-100 rounded-2xl w-1/4 min-w-[400px] overflow-auto">
-          <div className="flex flex-row justify-between items-center gap-4 flex-wrap px-2">
+          <div className="flex flex-row justify-between items-center gap-2 flex-wrap px-2">
             <div className="flex items-center gap-4">
               <div className="text-xl font-bold">Create Market</div>
               <select
@@ -162,7 +163,7 @@ export default function CreateMarket() {
               </select>
             </div>
             <div className="flex flex-row items-center gap-1">
-              <span className="text-sm">[ Market Id:</span>
+              <span className="text-sm">[ Id:</span>
               <span className="text-md font-bold">{displayTxResult(selectedCreatedMarkets)}</span>
               <span className="text-sm">]</span>
             </div>
@@ -203,8 +204,9 @@ const V7CreateMarketFlow = ({ connectedAddress, isPending, submitTx }: FlowProps
 
   const handleSubmit = async () => {
     const parsed = buildSharedParsedData(fields);
+    const normalizedCategory = normalizeCategoryCsv(fields.category);
 
-    if (!name || !description || !hasValidSharedFields(fields.category, parsed)) {
+    if (!name || !description || !hasValidSharedFields(normalizedCategory, parsed)) {
       notification.error("Invalid/empty V7 market parameters");
       return;
     }
@@ -213,7 +215,7 @@ const V7CreateMarketFlow = ({ connectedAddress, isPending, submitTx }: FlowProps
     const baseArgs = [
       name,
       description,
-      fields.category,
+      normalizedCategory,
       parsed.parsedOutcomes,
       BigInt(parsed.startTimestamp),
       BigInt(parsed.endTimestamp),
@@ -294,11 +296,12 @@ const V8CreateMarketFlow = ({ connectedAddress, isPending, submitTx }: FlowProps
 
   const handleSubmit = async () => {
     const parsed = buildSharedParsedData(fields);
+    const normalizedCategory = normalizeCategoryCsv(fields.category);
     const liquidityWei = BigInt(liquidity * 10 ** 18);
     const collateralFunder = connectedAddress || fields.creator;
     const overroundPercentNumber = Number(overroundPercent) || 0;
 
-    if (!question || !resolutionCriteria || !hasValidSharedFields(fields.category, parsed)) {
+    if (!question || !resolutionCriteria || !hasValidSharedFields(normalizedCategory, parsed)) {
       notification.error("Invalid/empty V8 market parameters");
       return;
     }
@@ -308,7 +311,7 @@ const V8CreateMarketFlow = ({ connectedAddress, isPending, submitTx }: FlowProps
         question: question,
         resolutionCriteria: resolutionCriteria,
         imageURL: imageURL || defaultImageURL,
-        category: fields.category,
+        category: normalizedCategory,
         outcomes: parsed.parsedOutcomes.join(","),
         creator: fields.creator as `0x${string}`,
         operator: defaultCreator as `0x${string}`,
@@ -461,7 +464,7 @@ const parseUtcTimestamp = (date?: string, time?: string): number => {
 const parseOutcomes = (outcomes: string): string[] => outcomes.split(",").map(value => value.trim()).filter(Boolean);
 
 const hasValidSharedFields = (category: string, parsed: SharedParsedData) =>
-  Boolean(category) &&
+  Boolean(normalizeCategoryCsv(category)) &&
   parsed.parsedOutcomes.length >= 2 &&
   parsed.startTimestamp > 0 &&
   parsed.endTimestamp > parsed.startTimestamp;
@@ -482,42 +485,38 @@ const buildSharedParsedData = (fields: SharedFormFields): SharedParsedData => {
   };
 };
 
+const getDefaultDateTimeFields = () => {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const hh = String(today.getHours()).padStart(2, "0");
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowYyyy = tomorrow.getFullYear();
+  const tomorrowMm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const tomorrowDd = String(tomorrow.getDate()).padStart(2, "0");
+
+  return {
+    startDate: `${yyyy}-${mm}-${dd}`,
+    startTime: `${hh}:00`,
+    endDate: `${tomorrowYyyy}-${tomorrowMm}-${tomorrowDd}`,
+    endTime: `${hh}:00`,
+  };
+};
+
+const getDefaultSharedFormFields = (connectedAddress?: `0x${string}`): SharedFormFields => ({
+  category: "",
+  ...getDefaultDateTimeFields(),
+  creator: connectedAddress || defaultCreator,
+  collateral: defaultCollateral,
+  outcomes: "YES,NO",
+  funding: 2000,
+});
+
 const useSharedFormFields = (connectedAddress?: `0x${string}`) => {
-  const [fields, setFields] = useState<SharedFormFields>({
-    category: "",
-    startDate: undefined,
-    startTime: undefined,
-    endDate: undefined,
-    endTime: undefined,
-    creator: connectedAddress || defaultCreator,
-    collateral: defaultCollateral,
-    outcomes: "YES,NO",
-    funding: 2000,
-  });
-
-  useEffect(() => {
-    if (!fields.startDate && !fields.endDate) {
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      const hh = String(today.getHours()).padStart(2, "0");
-
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowYyyy = tomorrow.getFullYear();
-      const tomorrowMm = String(tomorrow.getMonth() + 1).padStart(2, "0");
-      const tomorrowDd = String(tomorrow.getDate()).padStart(2, "0");
-
-      setFields(prev => ({
-        ...prev,
-        startDate: `${yyyy}-${mm}-${dd}`,
-        startTime: `${hh}:00`,
-        endDate: `${tomorrowYyyy}-${tomorrowMm}-${tomorrowDd}`,
-        endTime: `${hh}:00`,
-      }));
-    }
-  }, [fields.startDate, fields.endDate]);
+  const [fields, setFields] = useState<SharedFormFields>(() => getDefaultSharedFormFields(connectedAddress));
 
   useEffect(() => {
     if (fields.creator === defaultCreator && connectedAddress && connectedAddress !== defaultCreator) {
@@ -530,17 +529,7 @@ const useSharedFormFields = (connectedAddress?: `0x${string}`) => {
   };
 
   const reset = () => {
-    setFields({
-      category: "",
-      startDate: "",
-      startTime: "",
-      endDate: "",
-      endTime: "",
-      creator: connectedAddress || defaultCreator,
-      collateral: defaultCollateral,
-      outcomes: "YES,NO",
-      funding: 2000,
-    });
+    setFields(getDefaultSharedFormFields(connectedAddress));
   };
 
   return { fields, setField, reset };
@@ -553,12 +542,12 @@ const SharedFieldsSection = ({ fields, setField, middleFields }: SharedFieldsSec
         <span className="text-sm font-bold">Category</span>
         <input
           type="text"
-          placeholder="SPORTS"
+          placeholder="SPORTS,POLITICS"
           value={fields.category}
           onChange={e => setField("category", e.target.value)}
           className="input border border-primary rounded-xl w-full"
         />
-        <span className="text-xs italic pl-3">Note: One word in plural tense.</span>
+        <span className="text-xs italic pl-3">Note: Comma-separated categories.</span>
       </div>
       <div className="flex flex-col items-start px-2">
         <span className="text-sm font-bold">Outcomes</span>

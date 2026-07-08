@@ -1,0 +1,1233 @@
+import {expect} from "chai";
+import {ethers} from "hardhat";
+import {
+    PrecogToken,
+    PrecogMasterV7,
+    PrecogMarketV7,
+    PrecogRealityOracleV1,
+    FakeRealityETH,
+    FakeDai
+} from "../typechain-types";
+import {HardhatEthersSigner} from "@nomicfoundation/hardhat-ethers/signers";
+import {getCurrentBlockTimestamp} from "../libs/helpers"
+
+// TODO Update this tests to use PrecogRealityOracleV2 and deprecate this file
+describe("PrecogRealityOracleV1", function () {
+    const detailsEnabled: boolean = process.env.TEST_DETAILS === 'true';
+    let pre: PrecogToken;
+    let market: PrecogMarketV7;
+    let master: PrecogMasterV7;
+    let reality: FakeRealityETH;
+    let oracle: PrecogRealityOracleV1;
+    let dai: FakeDai;
+    let admin: HardhatEthersSigner;
+    let user: HardhatEthersSigner;
+    let reporter: HardhatEthersSigner;
+    let marketReporter: HardhatEthersSigner;
+    let caller: HardhatEthersSigner;
+
+    beforeEach(async function () {
+        [admin, user, caller, reporter, marketReporter] = await ethers.getSigners();
+    });
+
+    describe("Deployment & setup", function () {
+        it("Deploy & setup Precog ecosystem", async function () {
+            // Deploy PrecogToken
+            const PRE = await ethers.getContractFactory("PrecogToken");
+            const precogOwner = admin.address;
+            pre = await PRE.deploy(precogOwner);
+            // Mint PRE tokens for admin account
+            await pre.mint(admin.address, ethers.parseEther('2000'));
+            await pre.mint(caller.address, ethers.parseEther('1'));
+            // Deploy PrecogMaster contract
+            const PrecogMaster = await ethers.getContractFactory("PrecogMasterV7");
+            master = await PrecogMaster.deploy(await pre.getAddress(), admin.address);
+            // Deploy Base PrecogMarket contract
+            const PrecogMarket = await ethers.getContractFactory("PrecogMarketV7");
+            market = await PrecogMarket.deploy();
+            await market.initialize(await pre.getAddress());
+            // Set base market references on PrecogMaster
+            await master.setBaseMarket(await market.getAddress());
+            // Add 'ADMIN' account to PrecogMaster access list
+            await master.addAdmin(admin.address);
+            // Add 'CALLER' account to PrecogMaster access list
+            await master.addCaller(caller.address);
+            // Add 'MARKET_CREATOR' role to 'CALLER' account
+            await master.addMarketCreator(caller.address);
+            // Transfer ownership of PrecogToken to PrecogMaster
+            await pre.transferOwnership(await master.getAddress());
+            // Deploy FakeDai contract
+            const DAI = await ethers.getContractFactory("FakeDai");
+            dai = await DAI.deploy(admin.address);
+            // Mint tokens to caller
+            await dai.mint(caller.address, ethers.parseEther('2000'));
+        })
+
+        it("Deploy Reality.eth contract", async function () {
+            const RealityFactory = await ethers.getContractFactory("FakeRealityETH");
+            reality = await RealityFactory.deploy();
+        })
+
+        it("Deploy PrecogRealityOracleV1", async function () {
+            const OracleFactory = await ethers.getContractFactory("PrecogRealityOracleV1");
+            oracle = await OracleFactory.deploy(admin.address);
+        })
+
+        it("Set oracle configurations", async function () {
+            await oracle.connect(admin).setPrecogMaster(await master.getAddress());
+            await oracle.connect(admin).setReality(await reality.getAddress());
+            await oracle.connect(admin).setArbitrator(ethers.ZeroAddress);
+            await oracle.connect(admin).setMaxAnswerBond(ethers.parseEther('100'));
+
+            // Master configurations
+            // Set base market & oracle references on PrecogMaster
+            await master.setBaseOracle(await oracle.getAddress());
+            // Set oracle of the market to PrecogRealityOracleV1
+            await market.updateOracle(await oracle.getAddress());
+            // Transfer ownership of market to PrecogMaster
+            await market.transferOwnership(await master.getAddress());
+
+            expect(await oracle.reality()).to.equal(await reality.getAddress());
+            expect(await oracle.precogMaster()).to.equal(await master.getAddress());
+            expect(await oracle.arbitrator()).to.equal(ethers.ZeroAddress);
+            expect(await oracle.maxAnswerBond()).to.equal(ethers.parseEther('100'));
+        })
+    })
+
+    describe("Oracle Management functions", function () {
+        it("| Admin accounts can add/remove market reporters", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 4;
+            const isMarketReporterBefore = await oracle.isMarketReporter(marketId, marketReporter.address);
+
+            if (detailsEnabled) {
+                console.log(`\t| Is Market Reporter before: ${isMarketReporterBefore} for market ${marketId}`);
+                console.log(`\t| Adding market reporter ${marketReporter.address} for market ${marketId}`);
+            }
+            await oracle.connect(admin).addMarketReporter(marketId, marketReporter.address);
+            const isMarketReporterAfter = await oracle.isMarketReporter(marketId, marketReporter.address);
+
+            if (detailsEnabled) {
+                console.log(`\t| Is Market Reporter after: ${isMarketReporterAfter} for market ${marketId}`);
+                console.log(`\t| Removing market reporter ${marketReporter.address} for market ${marketId}`);
+            }
+            await oracle.connect(admin).removeMarketReporter(marketId, marketReporter.address);
+            const isMarketReporterRemoved = await oracle.isMarketReporter(marketId, marketReporter.address);
+
+            // Add the Market Reporter for the upcoming tests
+            await oracle.connect(admin).addMarketReporter(marketId, marketReporter.address);
+            if (detailsEnabled) {
+                console.log(`\t| Market Reporter added: ${marketReporter.address}`);
+            }
+
+            expect(isMarketReporterBefore).to.equal(false);
+            expect(isMarketReporterAfter).to.equal(true);
+            expect(isMarketReporterRemoved).to.equal(false);
+        })
+
+        it("| Admin accounts can add/remove global reporters", async function () {
+            const isReporterBefore = await oracle.hasRole(await oracle.REPORTER_ROLE(), user.address);
+
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Is Reporter before: ${isReporterBefore} for user ${user.address}`);
+                console.log(`\t| Adding global reporter: ${user.address}`);
+            }
+            await oracle.connect(admin).addReporter(user.address);
+            const isReporterAfter = await oracle.hasRole(await oracle.REPORTER_ROLE(), user.address);
+
+            if (detailsEnabled) {
+                console.log(`\t| Is Reporter after: ${isReporterAfter} for user ${user.address}`);
+                console.log(`\t| Removing global reporter: ${user.address}`);
+            }
+            await oracle.connect(admin).removeReporter(user.address);
+            const isReporterRemoved = await oracle.hasRole(await oracle.REPORTER_ROLE(), user.address);
+
+            // Add the Global Reporter for the upcoming tests
+            await oracle.connect(admin).addReporter(reporter.address);
+            if (detailsEnabled) {
+                console.log(`\t| Global Reporter added: ${reporter.address}`);
+            }
+
+            expect(isReporterBefore).to.equal(false);
+            expect(isReporterAfter).to.equal(true);
+            expect(isReporterRemoved).to.equal(false);
+        })
+
+        it("| Admin accounts can add/remove admins", async function () {
+            const isAdminBefore = await oracle.hasRole(await oracle.ADMIN_ROLE(), user.address);
+
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Is Admin before: ${isAdminBefore} for user ${user.address}`);
+                console.log(`\t| Adding admin: ${user.address}`);
+            }
+
+            await oracle.connect(admin).addAdmin(user.address);
+            const isAdminAfter = await oracle.hasRole(await oracle.ADMIN_ROLE(), user.address);
+
+            if (detailsEnabled) {
+                console.log(`\t| Is Admin after: ${isAdminAfter} for user ${user.address}`);
+                console.log(`\t| Removing admin: ${user.address}`);
+            }
+
+            await oracle.connect(admin).removeAdmin(user.address);
+            const isAdminRemoved = await oracle.hasRole(await oracle.ADMIN_ROLE(), user.address);
+            
+            expect(isAdminBefore).to.equal(false);
+            expect(isAdminAfter).to.equal(true);
+            expect(isAdminRemoved).to.equal(false);
+        })
+    })
+
+    describe("Access functions", function () {
+        it("| Admin accounts can't use 'onlyGlobalReporter' functions", async function () {
+            const marketId = 0;
+            const marketAddress = ethers.ZeroAddress;
+            const initialReporters: string[] = [];
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Admin: ${admin.address}`);
+            }
+            const call = oracle.connect(admin).registerMarket(marketId, marketAddress, initialReporters);
+            await expect(call).to.be.revertedWith("Only Reporter");
+        })
+
+        it("| Admin accounts can't use 'onlyMarketReporter' functions", async function () {
+            const marketId = 0;
+            const answer = ethers.ZeroHash;
+            const maxPrevious = ethers.parseEther('0');
+            const bond = ethers.parseEther('1');
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Admin: ${admin.address}`);
+            }
+            const call = oracle.connect(admin).answerOpenQuestion(marketId, answer, maxPrevious, bond);
+            await expect(call).to.be.revertedWith("Only Market Reporter");
+        })
+
+        it("| Reporter accounts can't use 'onlyAdmin' functions", async function () {
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| User: ${user.address}`);
+            }
+            const call = oracle.connect(reporter).addAdmin(user);
+            await expect(call).to.be.revertedWith("Only Admin");
+        })
+
+        it("| Market Reporter accounts can't use 'onlyAdmin' functions", async function () {
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Reporter: ${reporter.address}`);
+            }
+            const call = oracle.connect(marketReporter).addAdmin(user);
+            await expect(call).to.be.revertedWith("Only Admin");
+        })
+
+        it("| Market Reporter accounts can't use 'onlyGlobalReporter' functions", async function () {
+            const marketId = 4;
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| Market Reporter: ${marketReporter.address}`);
+            }
+            const call = oracle.connect(marketReporter).reportResult(marketId);
+            await expect(call).to.be.revertedWith("Only Reporter");
+        })
+
+        it("| Random accounts can't use 'onlyAdmin' functions", async function () {
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| User: ${user.address}`);
+            }
+
+            await expect(oracle.connect(reporter).addAdmin(user)).to.be.revertedWith("Only Admin");
+            await expect(oracle.connect(marketReporter).addAdmin(user)).to.be.revertedWith("Only Admin");
+            await expect(oracle.connect(user).addAdmin(user)).to.be.revertedWith("Only Admin");
+        })
+
+        it("| Random accounts can't use 'onlyGlobalReporter' functions", async function () {
+            const marketId = 0;
+            const marketAddress = ethers.ZeroAddress;
+            const initialReporters: string[] = [];
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| User: ${user.address}`);
+            }
+
+            const registerMarket = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).registerMarket(marketId, marketAddress, initialReporters);
+            }
+
+            await expect(registerMarket(admin)).to.be.revertedWith("Only Reporter");
+            await expect(registerMarket(marketReporter)).to.be.revertedWith("Only Reporter");
+            await expect(registerMarket(user)).to.be.revertedWith("Only Reporter");
+        })
+
+        it("| Random accounts can't use 'onlyMarketReporter' functions", async function () {
+            const marketId = 0;
+            const answer = ethers.ZeroHash;
+            const maxPrevious = ethers.parseEther('0');
+            const bond = ethers.parseEther('1');
+            if (detailsEnabled) {
+                console.log("");
+                console.log(`\t| User: ${user.address}`);
+            }
+
+            const answerQuestion = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).answerOpenQuestion(marketId, answer, maxPrevious, bond);
+            }
+
+            await expect(answerQuestion(admin)).to.be.revertedWith("Only Market Reporter");
+            await expect(answerQuestion(marketReporter)).to.be.revertedWith("Only Market Reporter");
+            await expect(answerQuestion(user)).to.be.revertedWith("Only Market Reporter");
+        })
+    })
+
+    describe("Market Registration functions", function () {
+        it("| Reporter accounts can register a Market on the Oracle", async function () {
+            if (detailsEnabled) console.log("");
+
+            const marketId: number = 0;
+            const name: string = 'Initial market';
+            const description: string = 'Initial description';
+            const category: string = 'CRYPTO';
+            const outcomes: string[] = ['YES', 'NO'];
+            const startTimestamp: number = await getCurrentBlockTimestamp();
+            const endTimestamp: number = startTimestamp + 300;  // 5 min market
+            const funding = ethers.parseEther('1000');
+            const overround: number = outcomes.length * 100;
+            const creator: string = admin.address;
+            const initialReporters: string[] = [marketReporter.address];
+            await master.connect(caller).createMarket(
+                name, description, category, outcomes, startTimestamp, endTimestamp, creator, funding, overround
+            );
+            const createdMarket: any[] = await master.markets(marketId);
+            const marketAddress = createdMarket[7];
+
+            if (detailsEnabled) {
+                console.log(`\t| Registering Market Id: ${marketId}`);
+                console.log(`\t| Market Address: ${marketAddress}`);
+            }
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+
+            const isMarketRegistered: boolean = await oracle.isMarketRegistered(marketId);
+            if (detailsEnabled) {
+                console.log(`\t| Is Market Registered: ${isMarketRegistered}`);
+            }
+            
+            const marketInfo = await oracle.markets(marketId);
+            const isReporterRegistered = await oracle.marketReporters(marketId, initialReporters[0]);
+
+            expect(isMarketRegistered).to.be.equal(true);
+            expect(marketInfo.market).to.equal(marketAddress);
+            expect(isReporterRegistered).to.be.equal(true);
+        })
+
+        it("| Nobody can register an already registered market", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const marketAddress = await market.getAddress();
+            const initialReporters: string[] = [];
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to re-register market ${marketId}`);
+            }
+            const registerMarket = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).registerMarket(marketId, marketAddress, initialReporters);
+            }
+
+            await expect(registerMarket(admin)).to.be.revertedWith("Only Reporter");
+            await expect(registerMarket(reporter)).to.be.revertedWith("Already register market");
+            await expect(registerMarket(marketReporter)).to.be.revertedWith("Only Reporter");
+            await expect(registerMarket(user)).to.be.revertedWith("Only Reporter");
+        })
+    })
+
+    describe("Reality.eth Question functions", function () {
+        it("| Reporter accounts can open questions on Reality without registering a market", async function () {
+            if (detailsEnabled) console.log("");
+            const bounty: bigint = ethers.parseEther('1');
+            const templateId: number = 2;
+            const question: string = "What is the capital of France?";
+            const outcomes: string[] = ["Paris", "London"];
+            const category: string = "CRYPTO";
+            const timeout: number = 10;
+            const startTime: number = 1000;
+            const tx = await oracle.connect(reporter).realityOpenQuestion(
+                bounty, templateId, question, outcomes, category, timeout, startTime, 0, { value: bounty }
+            );
+            await tx.wait();
+            // Get the questionId of the transaction, only a helper on FakeRealityETH
+            const questionId = await reality.lastQuestionId();
+            if(detailsEnabled) {
+                console.log(`\t| Last Question ID: ${questionId}`);
+            }
+            expect(questionId).to.not.equal(ethers.ZeroHash);
+            expect(await reality.getBounty(questionId)).to.equal(bounty);
+            expect(await reality.getTimeout(questionId)).to.equal(timeout);
+            expect(await reality.getBestAnswer(questionId)).to.equal(ethers.ZeroHash);
+            expect(await reality.isFinalized(questionId)).to.equal(false);
+            // TODO check that random accounts cannot answer questions on Reality
+        });
+
+        it("| Reporter accounts can answer questions on Reality in name of another account", async function () {
+            if (detailsEnabled) console.log("");
+            const answer = '0x0000000000000000000000000000000000000000000000000000000000000001';
+            // Get the questionId of the transaction, only a helper on FakeRealityETH (Set on the previous test)
+            const questionId = await reality.lastQuestionId();
+            const maxPrevious = ethers.parseEther('0');
+            const bond = ethers.parseEther('0');
+            const answerer = user.address;
+            await oracle.connect(reporter).realitySubmitAnswerFor(bond, questionId, answer, maxPrevious, answerer);
+            if (detailsEnabled) {
+                console.log(`\t| Question ID: ${questionId}`);
+                console.log(`\t| Answer: ${answer}`);
+                console.log(`\t| Best Answer: ${await reality.getBestAnswer(questionId)}`);
+                console.log(`\t| Is Finalized: ${await reality.isFinalized(questionId)}`);
+            }
+            expect(await reality.getBestAnswer(questionId)).to.equal(answer);
+            expect(await reality.isFinalized(questionId)).to.equal(false);
+            // TODO check that random accounts cannot answer questions on Reality
+        });
+
+        it("| Market Reporter accounts can open questions on Reality", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 0;
+            const bounty: bigint = ethers.parseEther('100');
+            const templateId: number = 2;
+            const question: string = "What is the capital of France?";
+            const outcomes: string[] = ["Paris", "London"];
+            const category: string = "CRYPTO";
+            const timeout: number = 10;
+            const startTime: number = await getCurrentBlockTimestamp();
+            if (detailsEnabled) {
+                console.log(`\t| Opening Question for Market Id: ${marketId}`);
+                console.log(`\t| Question: "${question}"`);
+            }
+
+            await oracle.connect(marketReporter).openQuestion(
+                marketId, bounty, templateId, question, outcomes, category, timeout, startTime, {value: bounty}
+            );
+
+            const marketInfo = await oracle.markets(marketId);
+            const realityInfo = await oracle.getRealityQuestionInfo(marketId);
+
+            if (detailsEnabled) {
+                console.log(`\t| Question ID: ${marketInfo.questionId}`);
+                console.log(`\t| Outcomes: ${marketInfo.outcomes}`);
+                console.log(`\t| Opening Time: ${realityInfo.openingTS}`);
+                console.log(`\t| Timeout: ${realityInfo.timeout}`);
+                console.log(`\t| Bounty: ${ethers.formatEther(realityInfo.bounty)} ETH`);
+            }
+
+            expect(marketInfo.questionId).to.not.equal(ethers.ZeroHash);
+            expect(marketInfo.questionId).to.equal(realityInfo.questionId);
+            expect(marketInfo.outcomes).to.equal(outcomes.join(","));
+            expect(realityInfo.timeout).to.equal(timeout);
+            expect(realityInfo.bounty).to.equal(bounty);
+        })
+
+        it("| Market Reporter accounts can answer open questions on Reality (sending value)", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 0;
+            const answer: string = "0x0000000000000000000000000000000000000000000000000000000000000001"
+            const maxPrevious: bigint = ethers.parseEther('0');
+            const bond: bigint = await oracle.maxAnswerBond();
+            if (detailsEnabled) {
+                console.log(`\t| Answering Question for Market Id: ${marketId}`);
+                console.log(`\t| Answer: ${answer}`);
+            }
+
+            await oracle.connect(marketReporter).answerOpenQuestion(
+                marketId, answer, maxPrevious, bond, {value: bond}
+            );
+
+            const realityInfo = await oracle.getRealityQuestionInfo(marketId);
+            const marketInfo = await oracle.markets(marketId);
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+
+            if (detailsEnabled) {
+                console.log(`\t| Question ID: ${marketInfo.questionId}`);
+                console.log(`\t| Outcomes: ${marketInfo.outcomes}`);
+                console.log(`\t| Opening Time: ${realityInfo.openingTS}`);
+                console.log(`\t| Timeout: ${realityInfo.timeout}`);
+                console.log(`\t| Bounty: ${ethers.formatEther(realityInfo.bounty)} ETH`);
+                console.log(`\t| Current Answer: ${resultInfo.answer}`);
+            }
+
+            expect(marketInfo.answered).to.be.true;
+            expect(resultInfo.answer).to.equal(answer);
+        })
+
+        it("| Market Reporter accounts can open & answer question (sending value)", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 3;
+            const bond: bigint = await oracle.maxAnswerBond();
+            const templateId: number = 2;
+            const question: string = "What is the capital of France?";
+            const outcomes: string[] = ["Paris", "London"];
+            const category: string = "CRYPTO";
+            const timeout: number = 300;
+            const answer: string = "0x0000000000000000000000000000000000000000000000000000000000000001"
+            const startTime: number = await getCurrentBlockTimestamp();
+
+            // First register the market
+            const marketAddress: string = await market.getAddress();
+            const initialReporters: string[] = [marketReporter.address];
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+
+            if (detailsEnabled) {
+                console.log(`\t| Submitting Result for Market Id: ${marketId} by Market Reporter`);
+                console.log(`\t| Question: "${question}", Answer: ${answer}`);
+            }
+            // Then submit the result
+            await oracle.connect(marketReporter).submitResult(
+                marketId, templateId, question, outcomes, category, timeout, startTime, answer, bond, {value: bond}
+            );
+
+            const marketInfo = await oracle.markets(marketId);
+            const realityInfo = await oracle.getRealityQuestionInfo(marketId);
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+            expect(marketInfo.questionId).to.not.equal(ethers.ZeroHash);
+            expect(marketInfo.answered).to.be.true;
+            expect(realityInfo.timeout).to.equal(timeout);
+            expect(realityInfo.bounty).to.equal(0);
+            expect(marketInfo.answered).to.be.true;
+            expect(resultInfo.answer).to.equal(answer);
+        })
+
+        it("| Market Reporter accounts can answer a question (using contract funds)", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 5;
+
+            // Register the market and open a question first
+            const marketAddress: string = await market.getAddress();
+            const initialReporters: string[] = [marketReporter.address];
+            // Register the market as a Global Reporter
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+
+            const bounty: bigint = ethers.parseEther('0');
+            const maxPrevious = ethers.parseEther('0');
+            const answer: string = "0x0000000000000000000000000000000000000000000000000000000000000001"
+            const templateId: number = 2;
+            const question: string = "Test question for internal bond?";
+            const outcomes: string[] = ["YES", "NO"];
+            const category: string = "TEST";
+            const timeout: number = 10;
+            const startTime: number = await getCurrentBlockTimestamp();
+            // Open a question as a Market Reporter
+            await oracle.connect(marketReporter).openQuestion(
+                marketId, bounty, templateId, question, outcomes, category, timeout, startTime, {value: bounty}
+            );
+
+            // Set oracle balance to 100 ETH
+            await ethers.provider.send(
+                "hardhat_setBalance",
+                [await oracle.getAddress(), ethers.toBeHex(ethers.parseEther('100'))]
+            );
+
+            // Get initial balances
+            const reporterBalanceBefore = await ethers.provider.getBalance(reporter.address);
+            const oracleBalanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+
+            // Answer the question with 10 ETH bond
+            const bondAmount = ethers.parseEther('10');
+            if (detailsEnabled) {
+                console.log(`\t| Answering question for market ${marketId}`);
+                console.log(`\t| Using internal oracle bond of ${ethers.formatEther(bondAmount)} ETH`);
+                console.log(`\t| Oracle balance before: ${ethers.formatEther(oracleBalanceBefore)} ETH`);
+                console.log(`\t| Reporter balance before: ${ethers.formatEther(reporterBalanceBefore)} ETH`);
+            }
+            await oracle.connect(reporter).answerOpenQuestion(marketId, answer, maxPrevious, bondAmount);
+
+            // Get final balances
+            const reporterBalanceAfter = await ethers.provider.getBalance(reporter.address);
+            const oracleBalanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            if (detailsEnabled) {
+                console.log(`\t| Oracle balance after: ${ethers.formatEther(oracleBalanceAfter)} ETH`);
+                console.log(`\t| Reporter balance after: ${ethers.formatEther(reporterBalanceAfter)} ETH`);
+            }
+
+            const marketInfo = await oracle.markets(marketId);
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+            expect(reporterBalanceBefore - reporterBalanceAfter).to.be.lt(ethers.parseEther('0.01'));
+            expect(oracleBalanceAfter).to.equal(oracleBalanceBefore - bondAmount);
+            expect(marketInfo.answered).to.be.true;
+            expect(resultInfo.answer).to.equal(answer);
+        });
+
+        it("| Market Reporter accounts can open & answer question (using contract funds)", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 6;
+            const bond: bigint = ethers.parseEther('1');
+            const templateId: number = 2;
+            const question: string = "What is the capital of France?";
+            const outcomes: string[] = ["Paris", "London"];
+            const category: string = "CRYPTO";
+            const timeout: number = 300;
+            const answer: string = "0x0000000000000000000000000000000000000000000000000000000000000001";
+            const startTime: number = await getCurrentBlockTimestamp();
+
+            // First register the market
+            const marketAddress: string = await market.getAddress();
+            const initialReporters: string[] = [marketReporter.address];
+            // The global reporter is the one to register the market
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+            const contractFundsBefore = await ethers.provider.getBalance(await oracle.getAddress());
+            const reporterFundsBefore = await ethers.provider.getBalance(marketReporter.address);
+            // Then submit the result
+            await oracle.connect(marketReporter).submitResult(
+                marketId, templateId, question, outcomes, category, timeout, startTime, answer, bond
+            );
+            const contractFundsAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            const reporterFundsAfter = await ethers.provider.getBalance(marketReporter.address);
+            const marketInfo = await oracle.markets(marketId);
+            const realityInfo = await oracle.getRealityQuestionInfo(marketId);
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+            const contractFundsDiff = contractFundsBefore - bond;
+            if (detailsEnabled) {
+                console.log(`\t| Contract funds before: ${ethers.formatEther(contractFundsBefore)} ETH`);
+                console.log(`\t| Reporter funds before: ${ethers.formatEther(reporterFundsBefore)} ETH`);
+                console.log(`\t| Contract funds after: ${ethers.formatEther(contractFundsAfter)} ETH`);
+                console.log(`\t| Reporter funds after: ${ethers.formatEther(reporterFundsAfter)} ETH`);
+                console.log(`\t| Question ID: ${marketInfo.questionId}`);
+                console.log(`\t| Outcomes: ${marketInfo.outcomes}`);
+                console.log(`\t| Current Answer: ${resultInfo.answer}`);
+                console.log(`\t| Bond: ${ethers.formatEther(realityInfo.bond)} ETH`);
+            }
+
+            expect(contractFundsAfter).to.equal(contractFundsDiff);
+            expect(reporterFundsAfter).to.be.lt(reporterFundsBefore);
+            expect(marketInfo.questionId).to.not.equal(ethers.ZeroHash);
+            expect(marketInfo.outcomes).to.equal(outcomes.join(","));
+            expect(realityInfo.timeout).to.equal(timeout);
+            expect(realityInfo.questionId).to.equal(marketInfo.questionId);
+            expect(marketInfo.answered).to.be.true;
+            expect(resultInfo.answer).to.equal(answer);
+        })
+
+        it("| Market Reporter accounts can't answer a question with bond higher than max", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 4;
+            //first register the market
+            const marketAddress: string = await market.getAddress();
+            const initialReporters: string[] = [marketReporter.address];
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+            //then open the question
+            const bounty: bigint = ethers.parseEther('100');
+            const maxPrevious = ethers.parseEther('0');
+            const templateId: number = 2;
+            const question: string = "What is the capital of France?";
+            const answer: string = "0x0000000000000000000000000000000000000000000000000000000000000001";
+            const outcomes: string[] = ["Paris", "London"];
+            const category: string = "CRYPTO";
+            const timeout: number = 10;
+            const startTime: number = await getCurrentBlockTimestamp();
+            await oracle.connect(marketReporter).openQuestion(
+                marketId, bounty, templateId, question, outcomes, category, timeout, startTime, {value: bounty}
+            );
+            const excessiveBond = ethers.parseEther('101');
+            if (detailsEnabled) {
+                console.log(`\t| Answering with bond ${ethers.formatEther(excessiveBond)} (too high)`);
+            }
+            //then answer the question
+            const answerCall = oracle.connect(marketReporter).answerOpenQuestion(
+                marketId, answer, maxPrevious, excessiveBond
+            );
+            await expect(answerCall).to.be.revertedWith("Answer bond too high");
+        })
+
+        it("| Nobody can open a question for unregistered market", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 7;
+            const bounty = ethers.parseEther('100');
+            const templateId = 2;
+            const question = "What is the capital of France?";
+            const outcomes = ["Paris", "London"];
+            const category = "CRYPTO";
+            const timeout = 300;
+            const startTime = await getCurrentBlockTimestamp();
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to open question for unregistered market ${marketId}`);
+            }
+            const openMarketQuestion = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).openQuestion(
+                    marketId, bounty, templateId, question, outcomes, category, timeout, startTime
+                );
+            }
+            await expect(openMarketQuestion(admin)).to.be.revertedWith("Only Market Reporter");
+            await expect(openMarketQuestion(reporter)).to.be.revertedWith("Market not registered");
+            await expect(openMarketQuestion(marketReporter)).to.be.revertedWith("Only Market Reporter");
+            await expect(openMarketQuestion(user)).to.be.revertedWith("Only Market Reporter");
+        })
+
+        it("| Nobody can open a question when question already exists", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const bounty = ethers.parseEther('100');
+            const templateId = 2;
+            const question = "What is the capital of France?";
+            const outcomes = ["Paris", "London"];
+            const category = "CRYPTO";
+            const timeout = 300;
+            const startTime = 0;
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to open question for market ${marketId} which already has one`);
+            }
+            const openMarketQuestion = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).openQuestion(
+                    marketId, bounty, templateId, question, outcomes, category, timeout, startTime
+                );
+            }
+
+            await expect(openMarketQuestion(admin)).to.be.revertedWith("Only Market Reporter");
+            await expect(openMarketQuestion(reporter)).to.be.revertedWith("Question already open");
+            await expect(openMarketQuestion(marketReporter)).to.be.revertedWith("Question already open");
+            await expect(openMarketQuestion(user)).to.be.revertedWith("Only Market Reporter");
+        })
+
+        it("| Nobody can answer a question for unregistered market", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 7;
+            const answer = ethers.ZeroHash;
+            const maxPrevious = ethers.parseEther('0');
+            const bond = ethers.parseEther('1');
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to answer question for unregistered market ${marketId}`);
+            }
+            const answerQuestion = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).answerOpenQuestion(marketId, answer, maxPrevious, bond);
+            }
+
+            await expect(answerQuestion(admin)).to.be.revertedWith("Only Market Reporter");
+            await expect(answerQuestion(reporter)).to.be.revertedWith("Market not registered");
+            await expect(answerQuestion(marketReporter)).to.be.revertedWith("Only Market Reporter");
+            await expect(answerQuestion(user)).to.be.revertedWith("Only Market Reporter");
+        })
+
+        it("| Nobody can answer an already answered question", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const maxPrevious = ethers.parseEther('0');
+            const answer = ethers.ZeroHash;
+            const bond = ethers.parseEther('1');
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to re-answer question for market ${marketId}`);
+            }
+            const answerQuestion = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).answerOpenQuestion(marketId, answer, maxPrevious, bond);
+            }
+            await expect(answerQuestion(admin)).to.be.revertedWith("Only Market Reporter");
+            await expect(answerQuestion(reporter)).to.be.revertedWith("Market already answered");
+            await expect(answerQuestion(marketReporter)).to.be.revertedWith("Market already answered");
+            await expect(answerQuestion(user)).to.be.revertedWith("Only Market Reporter");
+        })
+    })
+
+    describe("Reality.eth Result functions", function () {
+        it("| Reporter accounts can report results for finalized questions", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const questionInfo = await oracle.getRealityQuestionInfo(marketId);
+            const questionId: string = questionInfo.questionId;
+            await ethers.provider.send("evm_increaseTime", [400]);
+
+            await reality.connect(reporter).setFinalized(questionId, true);
+            await oracle.connect(reporter).reportResult(marketId);
+
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+            if (detailsEnabled) {
+                console.log(`\t| Reporting Result for Market Id: ${marketId}`);
+                console.log(`\t| Answer: ${resultInfo.answer}`);
+                console.log(`\t| Finalize TS: ${resultInfo.finalizeTS}`);
+                console.log(`\t| Last Hash: ${resultInfo.lastHash}`);
+                console.log(`\t| Status: Finalized=${resultInfo.isFinalized}`);
+                console.log(`\t| Pending Arbitration=${resultInfo.isPendingArbitration}`);
+            }
+
+            const marketInfo = await oracle.markets(marketId);
+            expect(marketInfo.resultIndex).to.equal(2);
+            expect(marketInfo.resultLabel).to.equal("London");
+            expect(resultInfo.isFinalized).to.be.true;
+            expect(resultInfo.isPendingArbitration).to.be.false;
+        })
+
+        it("| Reporter accounts can claim winnings", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 0;
+            const questionInfo = await oracle.getRealityQuestionInfo(marketId);
+            const questionId: string = questionInfo.questionId;
+            const historyHashes: string[] = [ethers.ZeroHash];
+            const answerers: string[] = [await oracle.getAddress()];
+            const bonds: bigint[] = [questionInfo.bond];
+            const balanceBefore = await reality.balanceOf(await oracle.getAddress());
+            const answers: string[] = [ethers.ZeroHash]; // First option
+            await oracle.connect(reporter).realityClaimWinnings(questionId, historyHashes, answerers, bonds, answers);
+            // Manually set the balance of the oracle
+            await reality.setBalance(await oracle.getAddress(), ethers.parseEther('100'));
+            // Get the current balance of the oracle
+            const balanceAfter = await reality.balanceOf(await oracle.getAddress());
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle Balance in Reality Before: ${ethers.formatEther(balanceBefore)} ETH`);
+                console.log(`\t| Oracle Balance in Reality After: ${ethers.formatEther(balanceAfter)} ETH`);
+            }
+
+            expect(balanceAfter).to.equal(ethers.parseEther('100'));
+        })
+
+        it("| Reporter accounts can withdraw winnings from Reality to Oracle", async function () {
+            if (detailsEnabled) console.log("");
+
+            const oracleBalanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+            const realityBalanceBefore = await reality.balanceOf(await oracle.getAddress());
+            const reporterBalanceBefore = await ethers.provider.getBalance(reporter.address);
+
+            await oracle.connect(reporter).realityWithdraw();
+
+            const oracleBalanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            const realityBalanceAfter = await reality.balanceOf(await oracle.getAddress());
+            const reporterBalanceAfter = await ethers.provider.getBalance(reporter.address);
+            const reporterBalanceChange = reporterBalanceAfter - reporterBalanceBefore;
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle ETH balance before: ${ethers.formatEther(oracleBalanceBefore)} ETH`);
+                console.log(`\t| Oracle ETH balance after: ${ethers.formatEther(oracleBalanceAfter)} ETH`);
+                console.log(`\t| Reality.eth balance before: ${ethers.formatEther(realityBalanceBefore)} ETH`);
+                console.log(`\t| Reality.eth balance after: ${ethers.formatEther(realityBalanceAfter)} ETH`);
+                console.log(`\t| Reporter balance before: ${ethers.formatEther(reporterBalanceBefore)} ETH`);
+                console.log(`\t| Reporter balance after: ${ethers.formatEther(reporterBalanceAfter)} ETH`);
+                console.log(`\t| Reporter balance change: ${ethers.formatEther(reporterBalanceChange)} ETH`);
+            }
+
+            expect(realityBalanceAfter).to.equal(0n);
+            expect(oracleBalanceAfter).to.be.gt(oracleBalanceBefore);
+            expect(reporterBalanceAfter).to.be.lt(reporterBalanceBefore);
+        })
+
+        it("| Reporter accounts can't report results for unfinalized questions", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 3;
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to report result for unfinalized Market Id: ${marketId}`);
+            }
+
+            await expect(oracle.connect(reporter).reportResult(marketId)).to.be.revertedWith("Invalid question");
+        })
+
+        it("| Random accounts can't claim winnings", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId: number = 3;
+            const questionInfo = await oracle.getRealityQuestionInfo(marketId);
+            const questionId: string = ethers.ZeroHash;
+            const historyHashes: string[] = [ethers.ZeroHash];
+            const answerers: string[] = [await oracle.getAddress()];
+            const bonds: bigint[] = [questionInfo[4]];
+            const answers: string[] = [ethers.ZeroHash]; // First option
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to claim winnings for market: ${marketId}`);
+            }
+
+            // Set up reusable arguments and helper function for testing reality claim winnings
+            const claimWinnings = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).realityClaimWinnings(
+                    questionId, historyHashes, answerers, bonds, answers
+                );
+            }
+
+            await expect(claimWinnings(admin)).to.be.revertedWith("Only Reporter");
+            await expect(claimWinnings(marketReporter)).to.be.revertedWith("Only Reporter");
+            await expect(claimWinnings(user)).to.be.revertedWith("Only Reporter");
+        })
+
+        it("| Random accounts can't withdraw winnings from Reality to Oracle", async function () {
+            if (detailsEnabled) console.log("");
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to withdraw winnings from Reality to Oracle`);
+            }
+            await expect(oracle.connect(admin).realityWithdraw()).to.be.revertedWith("Only Reporter");
+            await expect(oracle.connect(marketReporter).realityWithdraw()).to.be.revertedWith("Only Reporter");
+            await expect(oracle.connect(user).realityWithdraw()).to.be.revertedWith("Only Reporter");
+        })
+
+        it("| Admin can redeem shares from market", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const accounts = [admin.address, marketReporter.address];
+            if (detailsEnabled) {
+                console.log(`\t| Redeeming in batch: ${accounts.join(', ')}`);
+            }
+            await expect(oracle.connect(admin).marketRedeemBatch(marketId, accounts)).to.not.be.reverted;
+            // TODO Buy/sell in market to check if shares are redeemed
+        })
+
+        it("| Random accounts can't redeem shares from market", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const accounts = [admin.address, marketReporter.address, user.address];
+            // Set up reusable arguments and helper function for testing reality claim winnings
+            const marketRedeemBatch = (signer: HardhatEthersSigner) => {
+                return oracle.connect(signer).marketRedeemBatch(marketId, accounts);
+            }
+            if (detailsEnabled) {
+                console.log(`\t| Attempting to redeem shares from market ${marketId}`);
+            }
+            await expect(marketRedeemBatch(reporter)).to.be.revertedWith("Only Admin");
+            await expect(marketRedeemBatch(marketReporter)).to.be.revertedWith("Only Admin");
+            await expect(marketRedeemBatch(user)).to.be.revertedWith("Only Admin");
+        })
+    })
+
+    describe("Utility functions", function () {
+        it("| Admin accounts can withdraw ETH from Oracle", async function () {
+            if (detailsEnabled) console.log("");
+            const oracleBalanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+            const adminBalanceBefore = await ethers.provider.getBalance(admin.address);
+
+            await oracle.connect(admin).withdraw(ethers.ZeroAddress);
+
+            const oracleBalanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            const adminBalanceAfter = await ethers.provider.getBalance(admin.address);
+            const adminBalanceIncrease = adminBalanceAfter - adminBalanceBefore;
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle balance before withdraw: ${ethers.formatEther(oracleBalanceBefore)} ETH`);
+                console.log(`\t| Oracle balance after withdraw: ${ethers.formatEther(oracleBalanceAfter)} ETH`);
+                console.log(`\t| Admin balance before withdraw: ${ethers.formatEther(adminBalanceBefore)} ETH`);
+                console.log(`\t| Admin balance after withdraw: ${ethers.formatEther(adminBalanceAfter)} ETH`);
+                console.log(`\t| Admin balance change: ${ethers.formatEther(adminBalanceIncrease)} ETH`);
+            }
+
+            expect(oracleBalanceAfter).to.equal(0n);
+            expect(adminBalanceAfter).to.be.gt(adminBalanceBefore);
+            expect(adminBalanceIncrease).to.be.closeTo(oracleBalanceBefore, ethers.parseEther('0.01'));
+        })
+
+        it("| Admin accounts can withdraw ERC20 balance from oracle", async function () {
+            if (detailsEnabled) console.log("");
+            
+            const testAmount = ethers.parseEther('10');
+            await pre.connect(admin).transfer(await oracle.getAddress(), testAmount);
+            
+            const oracleBalanceBefore = await pre.balanceOf(await oracle.getAddress());
+            const adminBalanceBefore = await pre.balanceOf(admin.address);
+
+            await oracle.connect(admin).withdraw(await pre.getAddress());
+
+            const oracleBalanceAfter = await pre.balanceOf(await oracle.getAddress());
+            const adminBalanceAfter = await pre.balanceOf(admin.address);
+            const adminBalanceIncrease = adminBalanceAfter - adminBalanceBefore;
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle PRE balance before withdraw: ${ethers.formatEther(oracleBalanceBefore)} PRE`);
+                console.log(`\t| Oracle PRE balance after withdraw: ${ethers.formatEther(oracleBalanceAfter)} PRE`);
+                console.log(`\t| Admin PRE balance before withdraw: ${ethers.formatEther(adminBalanceBefore)} PRE`);
+                console.log(`\t| Admin PRE balance after withdraw: ${ethers.formatEther(adminBalanceAfter)} PRE`);
+                console.log(`\t| Admin PRE balance change: ${ethers.formatEther(adminBalanceIncrease)} PRE`);
+            }
+
+            expect(oracleBalanceAfter).to.equal(0n);
+            expect(adminBalanceAfter).to.be.gt(adminBalanceBefore);
+            expect(adminBalanceIncrease).to.equal(oracleBalanceBefore);
+        })
+
+        it("| Random accounts can check if market is registered", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const isMarketRegistered = await oracle.connect(user).isMarketRegistered(marketId);
+            if (detailsEnabled) {
+                console.log(`\t| Checking if market ${marketId} is registered: ${isMarketRegistered}`);
+            }
+            expect(isMarketRegistered).to.equal(true);
+        })
+
+        it("| Random accounts can check if account is market reporter", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const isMarketReporter = await oracle.connect(user).isMarketReporter(marketId, marketReporter.address);
+            const isNotMarketReporter = await oracle.connect(user).isMarketReporter(marketId, user.address);
+            if (detailsEnabled) {
+                console.log(`\t| Address: ${marketReporter.address}`);
+                console.log(`\t| Is reporter for market ${marketId}? ${isMarketReporter}`);
+                console.log(`\t| Is not reporter for market ${marketId}? ${isNotMarketReporter}`);
+            }
+            expect(isMarketReporter).to.equal(true);
+            expect(isNotMarketReporter).to.equal(false);
+        })
+
+        it("| Random accounts can get Reality balance", async function () {
+            if (detailsEnabled) console.log("");
+            const realityBalance = await oracle.connect(user).getRealityBalance();
+            if (detailsEnabled) {
+                console.log(`\t| Oracle balance on Reality: ${ethers.formatEther(realityBalance)}`);
+            }
+            expect(realityBalance).to.equal(ethers.parseEther('0'));
+        })
+
+        it("| Random accounts can get Reality question info", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 0;
+            const realityQuestionInfo = await oracle.connect(user).getRealityQuestionInfo(marketId);
+            if (detailsEnabled) {
+                console.log(`\t| Reality Id for market ${marketId}: ${realityQuestionInfo.questionId}`);
+            }
+            expect(realityQuestionInfo.questionId).to.not.equal(ethers.ZeroHash);
+        });
+
+        it("| Random accounts can get Reality result info", async function () {
+            if (detailsEnabled) console.log("");
+
+            const marketId = 0;
+            const realityResultInfo = await oracle.connect(user).getRealityResultInfo(marketId);
+
+            if (detailsEnabled) {
+                console.log(`\t| Reality final answer for market ${marketId}: ${realityResultInfo.answer}`);
+            }
+
+            expect(realityResultInfo.questionId).to.not.equal(ethers.ZeroHash);
+        })
+
+        it("| Oracle contract can receive ETH", async function () {
+            if (detailsEnabled) console.log("");
+            const balanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+
+            // Admin sends ETH to the contract
+            await admin.sendTransaction({
+                to: await oracle.getAddress(),
+                value: ethers.parseEther('1'),
+            });
+
+            const balanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            if (detailsEnabled) {
+                console.log(`\t| Oracle balance before receive ETH: ${ethers.formatEther(balanceBefore)}`);
+                console.log(`\t| Oracle balance after receive ETH: ${ethers.formatEther(balanceAfter)}`);
+            }
+
+            expect(balanceAfter).to.equal(balanceBefore + ethers.parseEther('1'));
+        })
+    })
+
+    describe("Precog Basic Flow with custom collateral", function () {
+        it("| Oracle registers the market in the Oracle contract", async function () {
+            if (detailsEnabled) console.log("");
+            const name: string = 'Which AI model will rank as the top performer this month?';
+            const description: string = 'Market will resolve based on the leaderboard rankings at lmarena.ai.';
+            const category: string = 'AI';
+            const outcomes: string[] = ['Gemini', 'ChatGPT', 'Grok', 'Claude', 'DeepSeek', 'Other'];
+            const startTimestamp: number = await getCurrentBlockTimestamp();
+            const endTimestamp: number = startTimestamp + 300;  // 5 min market
+            const funding = ethers.parseEther('1000');
+            const overround: number = outcomes.length * 100;
+            const creator: string = admin.address;
+
+            // Approve PrecogMaster to use MarketCreator DAIs
+            await dai.connect(caller).approve(await master.getAddress(), funding);
+
+            await master.connect(caller).createCustomMarket(
+                name, description, category, outcomes, startTimestamp, endTimestamp, creator,
+                funding, overround, await dai.getAddress(), caller.address, await oracle.getAddress()
+            );
+
+            const marketId = 1;
+            const marketInfo = await master.markets(marketId);
+            const marketAddress = marketInfo.market;
+            const initialReporters = [marketReporter.address];
+
+            await oracle.connect(reporter).registerMarket(marketId, marketAddress, initialReporters);
+
+            if (detailsEnabled) {
+                console.log(`\t| Registering Market Id: ${marketId}`);
+                console.log(`\t| Market Address: ${marketAddress}`);
+                console.log(`\t| Initial Reporters: ${initialReporters}`);
+            }
+
+            // Get market registration info from oracle
+            const isMarketRegistered = await oracle.isMarketRegistered(marketId);
+            const oracleMarketInfo = await oracle.markets(marketId);
+            const isReporterRegistered = await oracle.marketReporters(marketId, initialReporters[0]);
+
+            if (detailsEnabled) {
+                console.log(`\t| Is Market Registered: ${isMarketRegistered}`);
+                console.log(`\t| Is Reporter Registered: ${isReporterRegistered}`);
+                console.log(`\t| Market Address in Oracle: ${oracleMarketInfo.market}`);
+                console.log(`\t| Question ID: ${oracleMarketInfo.questionId}`);
+                console.log(`\t| Answered: ${oracleMarketInfo.answered}`);
+                console.log(`\t| Result Index: ${oracleMarketInfo.resultIndex}`);
+                console.log(`\t| Result Label: ${oracleMarketInfo.resultLabel}`);
+            }
+
+            expect(isMarketRegistered).to.be.true;
+            expect(oracleMarketInfo.market).to.equal(marketAddress);
+            expect(isReporterRegistered).to.be.true;
+            expect(oracleMarketInfo.questionId).to.equal(ethers.ZeroHash);
+            expect(oracleMarketInfo.answered).to.be.false;
+            expect(oracleMarketInfo.resultIndex).to.equal(0n);
+            expect(oracleMarketInfo.resultLabel).to.equal("");
+        })
+
+        it("| Reporter accounts can open the question on Reality.eth", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 1;
+            const bounty = 0;
+            const templateId = 2;
+            const question = 'Which AI model will rank as the top performer this month?';
+            const outcomes: string[] = ['Gemini', 'ChatGPT', 'Grok', 'Claude', 'DeepSeek', 'Other'];
+            const category = 'AI';
+            const timeout = 300;
+            const startTime = await getCurrentBlockTimestamp();
+
+            await oracle.connect(reporter).openQuestion(
+                marketId, bounty, templateId, question, outcomes, category, timeout, startTime
+            );
+
+            if (detailsEnabled) {
+                console.log(`\t| Opening Question for Market Id: ${marketId}`);
+                console.log(`\t| Question: "${question}"`);
+                console.log(`\t| Outcomes: ${outcomes}`);
+                console.log(`\t| Category: ${category}`);
+                console.log(`\t| Timeout: ${timeout}, Start Time: ${startTime}`);
+            }
+
+            const marketInfo = await oracle.markets(marketId);
+            expect(marketInfo.questionId).to.not.equal(ethers.ZeroHash);
+            expect(marketInfo.outcomes).to.equal(outcomes.join(','));
+            expect(marketInfo.answered).to.be.false;
+            expect(marketInfo.resultIndex).to.equal(0n);
+            expect(marketInfo.resultLabel).to.equal("");
+        })
+
+        it("| Reporter accounts can answer the question on Reality.eth", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 1;
+            const answer = '0x0000000000000000000000000000000000000000000000000000000000000002';  // 'Grok' index
+            const maxPrevious = ethers.parseEther('0');
+            const bond = ethers.parseEther('1');
+
+            await oracle.connect(reporter).answerOpenQuestion(marketId, answer, maxPrevious, bond);
+
+            const marketInfo = await oracle.markets(marketId);
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+
+            if (detailsEnabled) {
+                console.log(`\t| Answering Question for Market Id: ${marketId}`);
+                console.log(`\t| Submitted Answer: ${answer}`);
+                console.log(`\t| Current Answer: ${resultInfo.answer}`);
+                console.log(`\t| Outcomes: ${marketInfo.outcomes}`);
+                console.log(`\t| Answered: ${marketInfo.answered}`);
+                console.log(`\t| Result Index: ${marketInfo.resultIndex}`);
+                console.log(`\t| Result Label: ${marketInfo.resultLabel}`);
+                console.log(`\t| Max Previous: ${maxPrevious}`);
+                console.log(`\t| Bond: ${ethers.formatEther(bond)} ETH`);
+            }
+
+            expect(marketInfo.answered).to.be.true;
+            expect(marketInfo.resultIndex).to.equal(0n);
+            expect(marketInfo.resultLabel).to.equal("");
+            expect(resultInfo.answer).to.equal(answer);
+            expect(resultInfo.isFinalized).to.be.false;
+        })
+
+        it("| Reporter accounts can report the result on Reality.eth", async function () {
+            if (detailsEnabled) console.log("");
+            const marketId = 1;
+            const questionInfo = await oracle.getRealityQuestionInfo(marketId);
+            const questionId: string = questionInfo.questionId;
+            await ethers.provider.send('evm_increaseTime', [400]);
+            await reality.connect(reporter).setFinalized(questionId, true);
+
+            await oracle.connect(reporter).reportResult(marketId);
+
+            const resultInfo = await oracle.getRealityResultInfo(marketId);
+            if (detailsEnabled) {
+                console.log(`\t| Reporting Result for Market Id: ${marketId}`);
+                console.log(`\t| Answer: ${resultInfo.answer}`);
+                console.log(`\t| Finalize TS: ${resultInfo.finalizeTS}`);
+                console.log(`\t| Last Hash: ${resultInfo.lastHash}`);
+                console.log(`\t| Status: Finalized=${resultInfo.isFinalized}`);
+                console.log(`\t| Pending Arbitration=${resultInfo.isPendingArbitration}`);
+            }
+
+            const marketInfo = await oracle.markets(marketId);
+            expect(marketInfo.resultIndex).to.equal(3);
+            expect(marketInfo.resultLabel).to.equal('Grok');  // Answer sent on previous testcase
+            expect(resultInfo.isFinalized).to.be.true;
+            expect(resultInfo.isPendingArbitration).to.be.false;
+        })
+
+        it("| Reporter accounts can claim winnings on Reality.eth", async function () {
+            if (detailsEnabled) console.log("");
+            await ethers.provider.send('evm_increaseTime', [400]);
+            const marketId: number = 1;
+            const questionInfo = await oracle.getRealityQuestionInfo(marketId);
+            const questionId: string = questionInfo.questionId;
+            const historyHashes: string[] = [ethers.ZeroHash];
+            const answerers: string[] = [await oracle.getAddress()];
+            const bonds: bigint[] = [questionInfo.bond];
+            const answers: string[] = ["0x0000000000000000000000000000000000000000000000000000000000000002"];
+            const balanceBefore = await reality.balanceOf(await oracle.getAddress());
+
+            await oracle.connect(reporter).realityClaimWinnings(questionId, historyHashes, answerers, bonds, answers);
+
+            // Manually set the balance of the oracle
+            await reality.setBalance(await oracle.getAddress(), ethers.parseEther('100'));
+            const balanceAfter = await reality.balanceOf(await oracle.getAddress());
+            if (detailsEnabled) {
+                console.log(`\t| Oracle Balance in Reality Before: ${ethers.formatEther(balanceBefore)} ETH`);
+                console.log(`\t| Oracle Balance in Reality After: ${ethers.formatEther(balanceAfter)} ETH`);
+            }
+
+            expect(balanceAfter).to.equal(ethers.parseEther('100'));
+        })
+
+        it("| Reporter accounts can withdraw winnings on Reality.eth", async function () {
+            if (detailsEnabled) console.log("");
+            
+            const oracleBalanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+            const realityBalanceBefore = await reality.balanceOf(await oracle.getAddress());
+            const reporterBalanceBefore = await ethers.provider.getBalance(reporter.address);
+
+            await oracle.connect(reporter).realityWithdraw();
+
+            const oracleBalanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            const realityBalanceAfter = await reality.balanceOf(await oracle.getAddress());
+            const reporterBalanceAfter = await ethers.provider.getBalance(reporter.address);
+            const reporterBalanceChange = reporterBalanceAfter - reporterBalanceBefore;
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle ETH balance before: ${ethers.formatEther(oracleBalanceBefore)} ETH`);
+                console.log(`\t| Oracle ETH balance after: ${ethers.formatEther(oracleBalanceAfter)} ETH`);
+                console.log(`\t| Reality.eth balance before: ${ethers.formatEther(realityBalanceBefore)} ETH`);
+                console.log(`\t| Reality.eth balance after: ${ethers.formatEther(realityBalanceAfter)} ETH`);
+                console.log(`\t| Reporter balance before: ${ethers.formatEther(reporterBalanceBefore)} ETH`);
+                console.log(`\t| Reporter balance after: ${ethers.formatEther(reporterBalanceAfter)} ETH`);
+                console.log(`\t| Reporter balance change: ${ethers.formatEther(reporterBalanceChange)} ETH`);
+            }
+
+            expect(realityBalanceAfter).to.equal(0n);
+            expect(oracleBalanceAfter).to.be.gt(oracleBalanceBefore);
+            expect(reporterBalanceAfter).to.be.lt(reporterBalanceBefore);
+        })
+
+        it("| Admin accounts can withdraw all ETH balance from the oracle", async function () {
+            if (detailsEnabled) console.log("");
+            const oracleBalanceBefore = await ethers.provider.getBalance(await oracle.getAddress());
+            const adminBalanceBefore = await ethers.provider.getBalance(admin.address);
+
+            await oracle.connect(admin).withdraw(ethers.ZeroAddress);
+
+            const adminBalanceAfter = await ethers.provider.getBalance(admin.address);
+            const oracleBalanceAfter = await ethers.provider.getBalance(await oracle.getAddress());
+            const adminBalanceIncrease = adminBalanceAfter - adminBalanceBefore;
+
+            if (detailsEnabled) {
+                console.log(`\t| Oracle ETH Balance Before: ${ethers.formatEther(oracleBalanceBefore)} ETH`);
+                console.log(`\t| Oracle ETH Balance After: ${ethers.formatEther(oracleBalanceAfter)} ETH`);
+                console.log(`\t| Withdrawing ETH Balance from Oracle`);
+                console.log(`\t| Admin ETH Balance Before: ${ethers.formatEther(adminBalanceBefore)} ETH`);
+                console.log(`\t| Admin ETH Balance After: ${ethers.formatEther(adminBalanceAfter)} ETH`);
+            }
+            expect(oracleBalanceAfter).to.equal(0n);
+            expect(adminBalanceAfter).to.be.gt(adminBalanceBefore);
+            expect(adminBalanceIncrease).to.be.closeTo(oracleBalanceBefore, ethers.parseEther('0.01'));
+        })
+    })
+})

@@ -1,12 +1,13 @@
 // TODO Using 2 block confirmations for now, need to change to 1. With 2 we assure that the refetch works.
 
 import { useState } from "react";
-import { usePublicClient, useAccount, useWriteContract } from "wagmi";
+import { usePublicClient, useAccount, useWriteContract, useSignTypedData } from "wagmi";
 import {erc20Abi, parseUnits, formatUnits} from "viem";
 import { useScaffoldContract } from "./scaffold-eth";
 import { ContractName } from "~~/utils/scaffold-eth/contract";
 import { getPrecogMasterContractKey, type PrecogMasterVersion } from "~~/utils/scaffold-eth/contractsData";
 import { useTransactor } from "./scaffold-eth/useTransactor";
+import { useTargetNetwork } from "./scaffold-eth/useTargetNetwork";
 import { fromNumberToInt128, fromInt128toNumber } from "~~/utils/numbers";
 import { notification } from "~~/utils/scaffold-eth";
 
@@ -15,7 +16,8 @@ type AccountSharesTuple = readonly [bigint, bigint, bigint, bigint, bigint, read
 export function useMarketActions(version: PrecogMasterVersion = "v8") {
   const [isPending, setIsPending] = useState(false);
   const { address: connectedAddress } = useAccount();
-  const publicClient = usePublicClient();
+  const { targetNetwork } = useTargetNetwork();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
   const writeTx = useTransactor();
   const { writeContractAsync } = useWriteContract();
   const marketContractName = (version === "v8" ? "PrecogMarketV8" : "PrecogMarketV7") as ContractName;
@@ -28,6 +30,8 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
   const { data: masterContract } = useScaffoldContract({
     contractName: masterContractName,
   });
+
+  const { signTypedDataAsync } = useSignTypedData();
 
   const getCollateralAddressV7 = async (marketAddress: string): Promise<`0x${string}`> => {
     if (!publicClient || !marketContract) throw new Error("Missing dependencies for collateral lookup (v7)");
@@ -79,6 +83,17 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       functionName: "marketAccountInfo",
       args: [BigInt(marketId), connectedAddress],
     } as any)) as unknown as AccountSharesTuple;
+  };
+
+  const getPermit2Address = async (): Promise<`0x${string}`> => {
+    if (version !== "v8" || !publicClient || !masterContract) {
+      throw new Error("Missing dependencies for Permit2 lookup (v8)");
+    }
+    return (await publicClient.readContract({
+      address: masterContract.address,
+      abi: masterContract.abi,
+      functionName: "PERMIT2",
+    } as any)) as `0x${string}`;
   };
 
 
@@ -142,6 +157,7 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       if (allowance < maxTokenWei) {
         const writeApproveAsync = () =>
           writeContractAsync({
+            chainId: targetNetwork.id,
             address: collateral,
             abi: erc20Abi,
             functionName: "approve",
@@ -154,6 +170,7 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       // Execute buy transaction
       const writeBuyAsync = () =>
         writeContractAsync({
+          chainId: targetNetwork.id,
           address: masterContract.address,
           abi: masterContract.abi,
           functionName: "marketBuy",
@@ -165,6 +182,71 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
     } catch (error) {
       console.error("Trade execution failed:", error);
       notification.error("Trade execution failed");
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  /**
+   * Executes a buy transaction using ownedMarketBuy (no ERC20 approval needed)
+   * @param marketId - ID of the market to buy shares in
+   * @param marketOutcome - Outcome ID to buy
+   * @param sharesToTrade - Number of shares to buy (number, not int128)
+   * @param marketAddress - Address of the market contract
+   * @param maxTokenIn - Maximum amount of tokens to spend (number, not wei)
+   */
+  const executeOwnedBuy = async (
+    marketId: number,
+    marketOutcome: number,
+    sharesToTrade: number,
+    marketAddress: string,
+    maxTokenIn: number
+  ) => {
+    if (!connectedAddress || !masterContract || !marketContract || !publicClient) {
+      notification.error("Missing dependencies for trade execution");
+      return;
+    }
+
+    setIsPending(true);
+
+    try {
+      const collateral = await getCollateralAddress(marketId, marketAddress);
+
+      const balance = await publicClient.readContract({
+        address: collateral,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [connectedAddress],
+      }) as bigint;
+
+      const tokenDecimals = await publicClient.readContract({
+        address: collateral,
+        abi: erc20Abi,
+        functionName: "decimals",
+        args: [],
+      }) as number;
+
+      const maxTokenWei = parseUnits(maxTokenIn.toString(), tokenDecimals);
+
+      if (balance < maxTokenWei) {
+        notification.error("Insufficient token balance");
+        return;
+      }
+
+      const writeOwnedBuyAsync = () =>
+        writeContractAsync({
+          chainId: targetNetwork.id,
+          address: masterContract.address,
+          abi: masterContract.abi,
+          functionName: "ownedMarketBuy",
+          args: [BigInt(marketId), BigInt(marketOutcome), fromNumberToInt128(sharesToTrade), maxTokenWei],
+        });
+
+      const txHash = await writeTx(writeOwnedBuyAsync, { blockConfirmations: 2 });
+      return txHash;
+    } catch (error) {
+      console.error("Owned buy execution failed:", error);
+      notification.error("Owned buy execution failed");
     } finally {
       setIsPending(false);
     }
@@ -230,6 +312,7 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       // Execute sell transaction
       const writeSellAsync = () =>
         writeContractAsync({
+          chainId: targetNetwork.id,
           address: masterContract.address,
           abi: masterContract.abi,
           functionName: "marketSell",
@@ -263,6 +346,7 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       try {
         const writeReportAsync = () =>
           writeContractAsync({
+            chainId: targetNetwork.id,
             address: marketAddress as `0x${string}`,
             abi: marketContract.abi,
             functionName: "reportResult",
@@ -296,6 +380,7 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
       // Execute redeem transaction
       const writeRedeemAsync = () =>
         writeContractAsync({
+          chainId: targetNetwork.id,
           address: masterContract.address,
           abi: masterContract.abi,
           functionName: "marketRedeemShares",
@@ -312,12 +397,88 @@ export function useMarketActions(version: PrecogMasterVersion = "v8") {
     }
   };
 
+  const executePermit2Buy = async (
+    marketId: number,
+    marketOutcome: number,
+    sharesToTrade: number,
+    marketAddress: string,
+    maxTokenIn: number,
+    permit2Address?: `0x${string}`,
+  ) => {
+    if (!connectedAddress || !masterContract || !marketContract || !publicClient) {
+      notification.error("Missing dependencies for trade execution");
+      return;
+    }
+    setIsPending(true);
+    try {
+      const collateral = await getCollateralAddress(marketId, marketAddress);
+
+      const [balance, tokenDecimals] = await Promise.all([
+        publicClient.readContract({ address: collateral, abi: erc20Abi, functionName: "balanceOf", args: [connectedAddress] }) as Promise<bigint>,
+        publicClient.readContract({ address: collateral, abi: erc20Abi, functionName: "decimals", args: [] }) as Promise<number>,
+      ]);
+
+      const maxTokenWei = parseUnits(maxTokenIn.toString(), tokenDecimals);
+
+      if (balance < maxTokenWei) {
+        notification.error("Insufficient token balance");
+        return;
+      }
+
+      const chainId = publicClient.chain.id;
+      const resolvedPermit2Address = permit2Address ?? await getPermit2Address();
+      const nonce = BigInt(Date.now());
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+
+      const signature = await signTypedDataAsync({
+        domain: { name: "Permit2", chainId, verifyingContract: resolvedPermit2Address },
+        types: {
+          PermitTransferFrom: [
+            { name: "permitted", type: "TokenPermissions" },
+            { name: "spender", type: "address" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+          TokenPermissions: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+        },
+        primaryType: "PermitTransferFrom",
+        message: {
+          permitted: { token: collateral, amount: maxTokenWei },
+          spender: masterContract.address,
+          nonce: nonce,
+          deadline: deadline,
+        },
+      });
+
+      const writePermit2BuyAsync = () =>
+        writeContractAsync({
+          chainId: targetNetwork.id,
+          address: masterContract.address,
+          abi: masterContract.abi,
+          functionName: "marketBuyWithPermit2",
+          args: [BigInt(marketId), BigInt(marketOutcome), fromNumberToInt128(sharesToTrade), maxTokenWei, nonce, deadline, signature],
+        });
+
+      return await writeTx(writePermit2BuyAsync, { blockConfirmations: 2 });
+    } catch (error) {
+      console.error("Permit2 buy execution failed:", error);
+      notification.error("Permit2 buy execution failed");
+    } finally {
+      setIsPending(false);
+    }
+  };
+
   return {
-    executeBuy,
-    executeSell,
-    executeReport,
-    executeRedeem,
-    isPending,
+    executeBuy: executeBuy,
+    executeOwnedBuy: executeOwnedBuy,
+    executePermit2Buy: executePermit2Buy,
+    executeSell: executeSell,
+    executeReport: executeReport,
+    executeRedeem: executeRedeem,
+    isPending: isPending,
     isLoading: !marketContract || !masterContract,
   };
 }

@@ -1,9 +1,10 @@
 import { Address, erc20Abi } from "viem";
-import { useAccount, usePublicClient } from "wagmi";
+import { usePublicClient } from "wagmi";
 import { useQuery, UseQueryOptions } from "@tanstack/react-query";
 import { ContractName } from "~~/utils/scaffold-eth/contract";
 import { getPrecogMasterContractKey, type PrecogMasterVersion } from "~~/utils/scaffold-eth/contractsData";
 import { useScaffoldContract } from "./scaffold-eth";
+import { useTargetNetwork } from "./scaffold-eth/useTargetNetwork";
 
 /**
  * Core types for market data structures
@@ -323,15 +324,15 @@ async function fetchAccountOutcomeBalancesV8(params: {
  * @returns Version-dependent { markets, totalMarkets }. Use PrecogMarketsList to render the correct list.
  */
 export const usePrecogMarkets = (version: PrecogMasterVersion = "v8") => {
+  const { targetNetwork } = useTargetNetwork();
   const { data: masterContract } = useScaffoldContract({
     contractName: getPrecogMasterContractKey(version) as ContractName,
   });
-  const publicClient = usePublicClient();
-  const { chain } = useAccount();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
   const config = MARKETS_FETCH_BY_VERSION[version];
 
   return useQuery<PrecogMarketsResult>({
-    queryKey: ["markets", chain?.id, version],
+    queryKey: ["markets", targetNetwork.id, version],
     queryFn: async (): Promise<PrecogMarketsResult> => {
       if (!masterContract?.address || !publicClient) return config.emptyResult();
 
@@ -381,7 +382,8 @@ export const usePrecogMarketDetails = (
   enabled: boolean,
   version: PrecogMasterVersion = "v8",
 ) => {
-  const publicClient = usePublicClient();
+  const { targetNetwork } = useTargetNetwork();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
   const marketContractName = getPrecogMarketContractKey(version);
   const masterContractName = getPrecogMasterContractKey(version) as ContractName;
   const { data: marketContract } = useScaffoldContract({
@@ -392,7 +394,7 @@ export const usePrecogMarketDetails = (
   });
 
   return useQuery({
-    queryKey: ["marketDetails", version, marketAddress, marketId],
+    queryKey: ["marketDetails", version, targetNetwork.id, marketAddress, marketId],
     queryFn: async () => {
       if (!publicClient || !marketContract?.abi || !masterContract?.abi || !masterContract?.address) {
         throw new Error("Public client or contract ABIs not available");
@@ -434,14 +436,15 @@ export const usePrecogMarketPrices = (
   enabled: boolean,
   version: PrecogMasterVersion = "v8",
 ) => {
-  const publicClient = usePublicClient();
+  const { targetNetwork } = useTargetNetwork();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
   const marketContractName = getPrecogMarketContractKey(version);
   const { data: marketContract } = useScaffoldContract({
     contractName: marketContractName,
   });
 
   const query = useQuery({
-    queryKey: ["marketPrices", version, marketAddress],
+    queryKey: ["marketPrices", version, targetNetwork.id, marketAddress],
     queryFn: async () => {
       if (!publicClient || !marketContract?.abi) {
         throw new Error("Public client or market contract ABI not available");
@@ -548,7 +551,7 @@ export const useAccountOutcomeBalances = (
   const { data: marketContract } = useScaffoldContract({
     contractName: marketContractName,
   });
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId });
 
   const isReady = !!publicClient && !!masterContract?.abi && !!marketContract?.abi && !!accountAddress && !!chainId;
 
