@@ -1,22 +1,22 @@
 LS-LMSR
 
-In the LMSR, b is a constant. But in the LS-LMSR, it is a function of the quantities traders have wagered on each outcome:
+In a normal LMSR system, b is a constant. But in the LS-LMSR, it is a function of the quantities traders have wagered on each outcome:
 
     b(q) = alpha . Sum(qi)
 
-At first glance, it appears that we have just shifted our problem from choosing one constant to another—now, instead of setting b > 0, we have to set alpha > 0 instead. However, alpha has a natural interpretation: because it can be shown that marginal prices in an n-event market sum to at most:
+At first, it appears that we have just shifted our problem from choosing one constant to another—now, instead of setting `b > 0`, we have to set `alpha > 0` instead. However, `alpha` has a natural interpretation: because it can be shown that marginal prices in an n-event market sum to at most:
 
     1 + alpha . n . log(n)
 
-We can interpret alpha as responsible for setting a market "vig" value (overround) — typically between 5 and 30 percent in real-world markets. 
+We can interpret `alpha` as responsible for setting a market "vig" value (`overround`) — typically between 1 and 30 percent in real-world markets. 
 Consequently, we can set:
 
     alpha = overround / n . log(n)
 
-This natural parameterization gives us a valuable guide in assessing what different values of alpha produce in the resulting market.
+This parameterization gives us a valuable guide in assessing what different values of `alpha` produce in a market.
 
-LS-LMSR Properties
-This small shift in how to set b---from a constant to an increasing value---creates a variety of curious beneficial properties:
+LS-LMSR Properties:
+This small shift in how to set `b`, from a constant to an increasing variable, creates a variety of curious beneficial properties:
 
 1. Numerical Precision:
     
@@ -40,7 +40,8 @@ This small shift in how to set b---from a constant to an increasing value---crea
 
    In the LMSR this loss bound determines the maximum amount of liquidity in the market (`maxLoss = b . log(n)`). 
    
-   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market and the overround parameter (`maxLoss = initialShares . overround`). This max bound is properly explained the next document: [Maximum Loss Bound for the Liquidity-Sensitive Logarithmic Market Scoring Rule](./LS-LMSR_Max-Loss-Bound.pdf)
+   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market and the overround parameter (`maxLoss = initialShares . overround`). This maximum loss boundry is properly explained in the next document: [Maximum Loss Bound for the Liquidity-Sensitive Logarithmic Market Scoring Rule](./LS-LMSR_Max-Loss-Bound.pdf).
+
 
 4. Liquidity Sensitivity:
 

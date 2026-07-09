@@ -6,10 +6,9 @@ This repository contains all smart contracts for the Precog forecasting protocol
 #### Prediction Markets and LMSR & LS-LMSR theory:
 - [Cultivate Labs: Types of Prediction Markets](https://www.cultivatelabs.com/crowdsourced-forecasting-guide/what-are-the-different-types-of-prediction-markets)
 - [Precog: Interactive LS-LMSR Simulator](https://core.precog.markets/simulator)
-- [Research Corner: Gates Building Prediction Market](https://www.cs.utexas.edu/news/2012/research-corner-gates-building-prediction-market)
-- [Augur: LMSR and LS-LMSR](https://augur.mystrikingly.com/blog/augur-s-automated-market-maker-the-ls-lmsr)
+- [Gensysn: Logarithmic Market Scoring Rule](https://blog.gensyn.ai/lmsr-logarithmic-market-scoring-rule/)
 - [Precog: Liquidity Sensitive LMSR](./LS-LMSR.md)
-- [Precog: LS-LMSR Max loss proof](./packages/hardhat/logs/Precog_LS-LMSR_Max-Loss.pdf)
+- [Precog: LS-LMSR Max Loss Bound](./LS-LMSR_Max-Loss-Bound.pdf)
 
 ## Repository Structure
 - [Contracts Implementations](/packages/hardhat/contracts)
