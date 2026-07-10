@@ -40,7 +40,7 @@ This small shift in how to set `b`, from a constant to an increasing variable, c
 
    In the LMSR this loss bound determines the maximum amount of liquidity in the market (`maxLoss = b . log(n)`). 
    
-   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market and the overround parameter (`maxLoss = initialShares . overround`). This maximum loss boundry is properly explained in the next document: [Maximum Loss Bound for the Liquidity-Sensitive Logarithmic Market Scoring Rule](./LS-LMSR_Max-Loss-Bound.pdf).
+   But in the LS-LMSR, the bounded loss it's determined by the initial amount of liquidity in the market and the overround parameter (`maxLoss = initialShares . overround`). This maximum loss boundry is properly explained in this document: [LS-LMSR: Maximum Loss Proof](./packages/hardhat/logs/Precog_LS-LMSR_Max-Loss.pdf).
 
 
 4. Liquidity Sensitivity:
